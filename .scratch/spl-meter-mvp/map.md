@@ -195,6 +195,23 @@ mechanics.
   no way to say so**, which adds a three-value `input` state — the one place the app speaks up, and
   still not a warning.
 
+- [Screen layout: meter and spectrogram together](issues/09-screen-layout.md)
+  — **Variant C's frame with its hierarchy inverted: one dominant number over a wide picture,
+  everything else behind a single sheet — but the dominant number is the *live* level, not the
+  rolling L_eq.** Simon's call, and it **inverts `09`'s own premise**; the argument the ticket had
+  not made is that a 60 s L_eq moves **0.0 dB in 8 s**, so at hero size it is dead screen. The cost,
+  which `10` must state: the number that dominates is no longer the number judged against 70. The
+  L_eq and its coverage and the max hold are **always visible** — C hid them to test whether they
+  were desk curiosity and they are not. Two things measurement settled that looked like taste:
+  **`S` is the default time weighting**, because at F the hero moves 1.72 dB per tick — further than
+  any rounding step, so `09`'s inherited readability lever does almost nothing (9.4 → 8.3 digit
+  changes/s from 0.1 to 1 dB) — and **display resolution stays 0.1 dB**, because coarsening is one
+  setting for all three numbers and would spend a tenth on the ceiling-judged L_eq to fix a
+  different number. `--` turns out to need a **typographic** treatment, not just a glyph: at hero
+  size two dashes render as a redaction bar. The **legend stays**, so `07`'s "if space forces it out"
+  trade is not taken. **This one reached the device** — `ios build` + `devicectl` needs no
+  networking, unlike the Safari route that blocked `07`.
+
 ## Requirements discovered while charting the terrain
 
 Not decisions and not fog — things the MVP must do that no ticket asked for, surfaced by probing:
@@ -245,14 +262,13 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   limiting engages near the *top* of a range, which is plausibly above the highest tested level.
   A further run 20 dB up would bracket the real operating point — worth doing with better equipment,
   not worth blocking on.
-- ~~**How the dB(A)/dB(C) switch presents**~~ — **mostly settled by `04`:** it is a
-  **settings-page setting**, not a main-UI toggle, and there are **three** modes not two (Z was
-  added). That rules out "show both at once", and `04` decision 2 depends on it — only the
-  selected chain runs. What is left for the layout work is narrow: how the *active* mode is
-  indicated on the main screen.
-  **Widened slightly by `05`:** there are now **two** dimensions to indicate, not one — weighting
-  (C/A/Z) *and* time weighting (F/S), because `05` ties the meaning of max hold to both. A bare
-  `MAX 72.4 dB` is unreadable. Still ticket `09`'s work, just with one more thing to show.
+- ~~**How the dB(A)/dB(C) switch presents**~~ — **closed by `09`.** `04` made it a
+  **settings-page setting** with **three** modes rather than two, and `05` added a second dimension
+  to indicate (time weighting F/S, because it ties the meaning of max hold to both). `09` settles the
+  rest: the switch lives in the **one sheet** reached from `⋯`, alongside calibration, and the active
+  mode is indicated by the **hero number's own header** — `NOW · C · slow`, both dimensions at once,
+  above the number they describe. A bare `MAX 72.4 dB` never arises, because one header governs the
+  live number and the max hold together.
 - **Whether the weighting filter validation table becomes a unit test in the repo**, and if
   so what test runner gets added — the project has none, and `CLAUDE.md` says to ask before
   adding one. Ticket `03` produced a ready-to-use 34-frequency table, so this is now a
@@ -279,6 +295,17 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   phone on this network (client isolation), so device work uses an embedded `ios build` plus
   `devicectl install`. Tolerable for probing; worth revisiting if iteration on device becomes
   frequent during implementation.
+  **`09` proved the workaround carries a whole frontend, not just a probe**: `npm run build` →
+  `env -u FORCE_COLOR npx tauri ios build` → `devicectl device install app` → `devicectl device
+  process launch`, about a minute per cycle once Rust is cached. That is what let `09` do the device
+  pass `07` could not. Two notes for whoever repeats it: the switcher UI must not be gated on
+  `import.meta.env.DEV`, because the device build is a release build; and there is no address bar, so
+  anything reachable only by query string needs an in-app link.
+- **Whether ~6 px per band reads at arm's length in a dim venue.** The last open question from `07`,
+  and `09` narrowed it rather than closing it: the app is now *on the device* (32 bands over ~205 px)
+  but no verdict has been given. It is the one thing that could still move `07` decision 3's band
+  count or its ~200 px height, and `09` decision 6's muted `--` wants the same look. Cheap to answer
+  — the build is installed — so it should not become a ticket unless the answer is "no".
 - **A signed macOS build with the `audio-input` entitlement is untested** — research `01`'s
   open risk 8. macOS is dev-only, so low priority, but capture will break silently in a signed
   bundle if the entitlement is wrong. Currently unowned by any ticket.

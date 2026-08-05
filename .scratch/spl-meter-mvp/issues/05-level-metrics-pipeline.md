@@ -205,7 +205,13 @@ touch:
   of seconds F→S. No artefact worth handling.
 - **Max hold: see decision 8.** This is the one place the setting bites.
 
-**8. Changing F/S clears the max hold. So does changing the weighting — a correction to `04`.**
+**Corrected by ticket [`09`](09-screen-layout.md) decision 5: the reason above is wrong, and `S` is
+the default.** This decision's outcome stands — the setting is selectable — but the ground it gave
+for recommending F-only does not survive measurement. An S-weighted readout does *not* occupy
+"nearly the same perceptual slot as a short L_eq": measured against the 10 s L_eq named here, S moves
+**0.351 dB per 100 ms tick against 0.017 dB**, and covers 6.8 dB of range against 0.5 dB — 20× and
+14×. Meanwhile `09` made the live value the **hero** number, where F's 1.72 dB per tick is churn that
+display resolution cannot fix. So S is live enough and readable; F stays selectable for transients.
 
 L_CFmax and L_CSmax are different quantities; S-max sits several dB below F-max on speech, because
 the transients are what the 1 s pole flattens. A maximum captured under one and read under the
@@ -256,6 +262,15 @@ enough to be honest, slow enough not to flicker.
 Two consequences that are arithmetic rather than choices: at **zero** coverage the L_eq is
 undefined (`Σn = 0`, the log of nothing), so it publishes no value too — `--` beside `0s of 60s`.
 And **max hold is unaffected**; a hold is historical by nature, so it simply stops rising.
+
+**Corrected by ticket [`09`](09-screen-layout.md): `--` and zero coverage do *not* always arrive
+together.** The reasoning above assumes an undefined L_eq means `Σn = 0`. A **denied microphone**
+breaks that: `CLAUDE.md` records that it delivers callbacks of *exact zeros*, so samples arrive and
+`Σn > 0` while `Σp² = 0` leaves the level undefined. `09` put it on screen and got `60s of 60s`
+beside `--` — the coverage figure claiming a complete minute while the meter said there was nothing.
+Resolved by treating a **zero-power block as a gap slot rather than a covered one**: coverage exists
+to say whether the number can be trusted, and zero power is the absence of a measurement rather than
+a quiet one. Side benefit — no `f64` `−∞` ever reaches `serde_json`.
 
 **12. One publish at 10 Hz for all three numbers. The audio callback is decoupled by a bounded
 queue of per-block summaries.**

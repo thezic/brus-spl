@@ -2,8 +2,8 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: task
-Status: open
-Blocked by: 09  (01, 02, 03, 04, 05, 06, 07, 08, 11 now resolved)
+Status: open — unblocked, on the frontier. **Every other ticket on the map is resolved.**
+Blocked by: —  (01, 02, 03, 04, 05, 06, 07, 08, 09, 11 all resolved)
 
 ## Question
 
@@ -32,6 +32,32 @@ does nothing at runtime, so the spec is the *only* place the honesty lives:
 
 Also record that measurement is **foreground-only with the idle timer disabled** (capture does not
 survive backgrounding), and that the L_eq display carries **window coverage** alongside the level.
+
+**Inherited from ticket [`09`](09-screen-layout.md) — the layout, plus four things that need
+*stating* rather than drawing, and two corrections to carry.**
+
+- **The screen leads with the live level, not the rolling L_eq**, and the spec must say so together
+  with the cost: **the number that dominates is not the number judged against 70 dB.** A reader will
+  otherwise assume the big number is the one that matters. `09` decision 2 inverted `09`'s own
+  premise, on the measured ground that a 60 s L_eq moves 0.0 dB in 8 s. The L_eq (with coverage) and
+  the max hold are always visible beside it; nothing is behind a tap.
+- **Defaults: `C` / `S` / 60 s / 0.1 dB display resolution.** `S` needs its reason recorded, because
+  `05` decision 7 recommended F-only: at F the hero moves 1.72 dB per 100 ms tick, further than any
+  rounding step, so display resolution cannot calm it. And 0.1 dB needs its reason too — coarsening
+  is one setting for all three numbers and would spend a tenth on the ceiling-judged L_eq.
+- **The input-state line's exact wording and its two-part shape** — `No microphone access` over
+  `Settings ▸ Privacy & Security ▸ Microphone` for `denied`, label alone for `unavailable`. The
+  two-part shape is what keeps it inside the no-warnings rule; one string made the two states look
+  like the same kind of message.
+- **`--` and `dBFS` are typographic states, not merely strings.** A spec that says "show `--`" and
+  stops will get a redaction bar: at hero size two dashes render as solid blocks. Muted and much
+  smaller is what makes them read as *no reading*. Same for sizing the primary number for its widest
+  state, which is the **uncalibrated** one (`−108.4`, not `66.7`).
+
+Two corrections `09` made that this spec must carry rather than repeat the originals: a **zero-power
+block is a gap slot, not a covered one** (so a denied mic reads `0s of 60s`, not `60s of 60s` beside
+`--`), and `07`'s **legend gutter is 58 px**. Also worth a line: settings *and* calibration live
+behind one sheet reached from `⋯`, and Reset is inside it and confirmed.
 
 **Inherited from ticket [`06`](06-calibration-model.md).**
 

@@ -289,6 +289,11 @@ low-level colour — otherwise a dead stream reads as a peaceful room, which is 
   picture, because decision 8 ties the two together; and if space forces the legend out, the
   picture loses its absolute meaning, which is a trade `09` should make knowingly rather than by
   cropping.
+  **Corrected by ticket [`09`](09-screen-layout.md): the legend gutter is 58 px, not ~52.** The
+  uncalibrated caption is `dBFS/band`, four characters longer than `dB/band`, and at 52 px it
+  overprinted the `now` label — the same "the uncalibrated state is the wider one" finding that made
+  `09` size its primary number for a leading minus sign. `09` also **declined the trade**: the
+  legend stays, so the picture keeps its absolute meaning.
 - **Ticket [`10`](10-write-the-spec.md) — four things to state and one not to claim.** The display
   is **always unweighted**, so it must not be read band-by-band against a weighted number. Its
   resolution is **one-third-octave, 12.5 Hz–16 kHz**, and the 12.5 Hz band is interpolated at
