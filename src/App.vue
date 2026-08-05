@@ -1,140 +1,142 @@
 <script setup lang="ts">
+// Throwaway harness for the capture spike (ticket 02) — delete with src-tauri/src/spike.rs.
+// This is deliberately not a meter layout: how the real screen looks is ticket 09's job,
+// and guessing at it here would pre-empt that prototype.
+//
+// It exists because the spike's target is a physical iPhone, where there is no terminal.
+// The report has to be readable on the device itself, not only in the Xcode console.
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
-const greetMsg = ref("");
-const name = ref("");
+const seconds = ref(10);
+const running = ref(false);
+const output = ref("");
+const failed = ref(false);
 
-async function greet() {
-  // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-  greetMsg.value = await invoke("greet", { name: name.value });
+async function runSpike() {
+  running.value = true;
+  failed.value = false;
+  output.value = `capturing for ${seconds.value}s…`;
+  try {
+    output.value = await invoke<string>("run_capture_spike", {
+      seconds: seconds.value,
+    });
+  } catch (e) {
+    failed.value = true;
+    output.value = String(e);
+  } finally {
+    running.value = false;
+  }
 }
 </script>
 
 <template>
   <main class="container">
-    <h1>Welcome to Tauri + Vue</h1>
+    <h1>Capture spike</h1>
+    <p class="sub">
+      Ticket 02 — proves cpal + AVAudioSession deliver non-zero PCM. Not the meter.
+    </p>
 
     <div class="row">
-      <a href="https://vite.dev" target="_blank">
-        <img src="/vite.svg" class="logo vite" alt="Vite logo" />
-      </a>
-      <a href="https://tauri.app" target="_blank">
-        <img src="/tauri.svg" class="logo tauri" alt="Tauri logo" />
-      </a>
-      <a href="https://vuejs.org/" target="_blank">
-        <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-      </a>
+      <label for="seconds">seconds</label>
+      <input id="seconds" v-model.number="seconds" type="number" min="1" max="120" />
     </div>
-    <p>Click on the Tauri, Vite, and Vue logos to learn more.</p>
 
-    <form class="row" @submit.prevent="greet">
-      <input id="greet-input" v-model="name" placeholder="Enter a name..." />
-      <button type="submit">Greet</button>
-    </form>
-    <p>{{ greetMsg }}</p>
+    <button :disabled="running" @click="runSpike">
+      {{ running ? "capturing…" : "Run capture spike" }}
+    </button>
+
+    <pre v-if="output" :class="{ failed }">{{ output }}</pre>
+
+    <p class="hint">
+      Make a steady sound while it runs. Expect a non-zero RMS well above the idle
+      floor. To probe interruptions, take a call or invoke Siri mid-run; to probe
+      route changes, plug in headphones.
+    </p>
   </main>
 </template>
 
-<style scoped>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #249b73);
-}
-
-</style>
 <style>
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
+  line-height: 1.5;
   color: #0f0f0f;
   background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   -webkit-text-size-adjust: 100%;
 }
 
 .container {
-  margin: 0;
-  padding-top: 10vh;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+  max-width: 40rem;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  text-align: center;
+  gap: 1rem;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
+h1 {
+  margin: 0;
+  font-size: 1.5rem;
 }
 
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
+.sub,
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  opacity: 0.7;
 }
 
 .row {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
+input {
+  width: 6rem;
+  padding: 0.6em 0.8em;
+  font: inherit;
+  border: 1px solid #ccc;
   border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
+  background: #fff;
+  color: inherit;
+}
+
+button {
+  /* Sized for a thumb: this gets tapped on a phone, one-handed, at a venue. */
+  padding: 0.9em 1.2em;
+  font: inherit;
   font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
   cursor: pointer;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: #396cd8;
+  color: #fff;
 }
 
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
+button:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
-input,
-button {
-  outline: none;
+pre {
+  margin: 0;
+  padding: 0.8rem;
+  /* The report is fixed-width columns; let it scroll rather than reflow. */
+  overflow-x: auto;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  white-space: pre;
 }
 
-#greet-input {
-  margin-right: 5px;
+pre.failed {
+  border-color: #d33;
+  color: #a00;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -143,18 +145,15 @@ button {
     background-color: #2f2f2f;
   }
 
-  a:hover {
-    color: #24c8db;
+  input,
+  pre {
+    background: #1f1f1f;
+    border-color: #444;
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
-  }
-  button:active {
-    background-color: #0f0f0f69;
+  pre.failed {
+    border-color: #d33;
+    color: #ff8f8f;
   }
 }
-
 </style>

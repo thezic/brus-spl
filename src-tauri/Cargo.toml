@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
+# Required because the spike adds a second binary: `tauri dev` shells out to a bare
+# `cargo run`, which fails as ambiguous without this.
+default-run = "decibel-meter"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -17,9 +20,32 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[[bin]]
+# Desktop-only runner for the throwaway capture spike (ticket 02). On iOS the
+# spike is reached through the `run_capture_spike` Tauri command instead, since
+# a bare binary cannot be signed and installed on a device.
+name = "spike"
+path = "src/bin/spike.rs"
+
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+cpal = "0.18.1"
+
+# iOS-only: configure the AVAudioSession that cpal deliberately does not touch.
+# Version and feature set deliberately match cpal's own iOS dependency so the
+# objc2 graph does not duplicate.
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2-avf-audio = { version = "0.3", default-features = false, features = [
+    "std",
+    "AVAudioSession",
+    "AVAudioSessionTypes",
+    "block2",
+] }
+block2 = "0.6"
+# For `runtime::Bool` in the requestRecordPermission completion block. Range
+# matches objc2-avf-audio's own constraint so the objc2 graph does not duplicate.
+objc2 = { version = ">=0.6.2, <0.8.0", default-features = false, features = ["std"] }
 
