@@ -36,22 +36,20 @@ fi
 
 if [ "$failed" -ne 0 ]; then
 	echo
-	# `ios init` generates the project but does NOT merge the plist — only
-	# dev/build/run do. Distinguish "you haven't built yet" from "the merge broke",
-	# because the first is expected and the second is a launch-time process kill.
-	# `pod install` runs as part of dev/build, so Pods/ is a decent proxy for
-	# "a build has happened at least once".
-	if [ ! -d src-tauri/gen/apple/Pods ]; then
-		echo "$failed of $found generated plist(s) lack $KEY — but no iOS build"
-		echo "has run yet (no src-tauri/gen/apple/Pods). This is expected after"
-		echo "'tauri ios init', which generates the project without merging the"
-		echo "plist. Run 'npm run tauri ios dev' or 'ios build', then re-run this."
-		exit 3
-	fi
 	echo "$failed of $found generated plist(s) lack $KEY."
-	echo "The app will be killed on first microphone access. A build HAS run, so"
-	echo "the merge itself is suspect: check that src-tauri/Info.plist exists and"
-	echo "that this tauri-cli version still honours it (see research 01 risk 10)."
+	echo
+	# Deliberately does NOT guess which of these it is. An earlier version tried to
+	# infer "has a build run?" from the presence of gen/apple/Pods, which is wrong:
+	# this project has no pod dependencies, so Pods/ never appears even after a
+	# successful build. That guess failed in the dangerous direction — it reported a
+	# genuinely broken merge as the benign "you haven't built yet" case.
+	echo "If you have NOT yet run 'tauri ios dev' or 'ios build': expected."
+	echo "'ios init' generates the project without merging the plist. Build, re-run."
+	echo
+	echo "If you HAVE built: this is a real problem. The app is killed on first"
+	echo "microphone access, with no build error. Check that src-tauri/Info.plist"
+	echo "exists and that this tauri-cli version still honours the merge order"
+	echo "(undocumented, and it changed between 2.4 and 2.9 — research 01 risk 10)."
 	exit 1
 fi
 

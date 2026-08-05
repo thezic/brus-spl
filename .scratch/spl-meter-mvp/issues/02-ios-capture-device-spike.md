@@ -175,12 +175,44 @@ open risks 1–6.
    `audio-input` entitlement is a macOS Hardened Runtime concern. iOS microphone access is
    gated purely by the purpose string plus TCC.
 
-3. `npm run tauri ios dev` (or `ios build`) — **first step that needs the device and
-   signing.** Then `./scripts/check-ios-plist.sh` to confirm the merge landed.
-   **Open risk 6 is still open**: a Personal Team satisfies Tauri's requirement on paper,
-   but free provisioning actually deploying to the device is unproven, and profiles expire
-   after 7 days — record the re-signing workflow.
-4. Tap **Run capture spike**. The verdict line is the answer to open risk 1. The
+3. ✅ **`npm run tauri ios dev` builds and signs.** Two things this settled:
+
+   **Open risk 6 — free provisioning signs.** `xcodebuild -allowProvisioningUpdates`
+   issued a profile against the Personal Team with no developer account:
+
+   ```
+   EXPANDED_CODE_SIGN_IDENTITY_NAME = Apple Development: simondhlbrg@gmail.com
+   EXPANDED_PROVISIONING_PROFILE    = 9ff2ce33-f12a-49b8-ac68-3f4658210789
+   application-identifier           = QV7UX8JMYX.net.thezic.decibel-meter
+   ```
+
+   The 7-day expiry is still ahead of us, so the re-signing workflow remains unrecorded.
+
+   **Open risk 10 — the plist merge works on tauri-cli 2.11.4.**
+   `NSMicrophoneUsageDescription` is present in the generated
+   `gen/apple/decibel-meter_iOS/Info.plist` after the build, and
+   `./scripts/check-ios-plist.sh` exits 0. The undocumented merge honours
+   `src-tauri/Info.plist` as research `01` §3b predicted for ≥ 2.9.0.
+
+   **A gotcha that cost a download:** `tauri ios dev` refuses to run at all unless an iOS
+   *Simulator* runtime is installed — cargo-mobile2 calls
+   `xcrun simctl list runtimes --json`, treats an empty list as fatal
+   ("iOS platform not installed"), and offers `xcodebuild -downloadPlatform iOS`. This
+   fires *after* it has already detected the physical device and chosen the
+   `aarch64-apple-ios` target, and nothing in a device build uses the runtime. Xcode 15+
+   ships no runtimes by default, so a clean machine hits this. Prefer
+   `xcodebuild -downloadPlatform iOS -architectureVariant arm64` over accepting Tauri's
+   prompt, which fetches the larger universal variant. Removal afterwards is
+   `xcrun simctl runtime delete all` — but that re-arms the gate.
+
+   Also noticed in the build settings, recorded in case capture misbehaves:
+   `ENABLE_RESOURCE_ACCESS_AUDIO_INPUT=NO`. It sits alongside `ENABLE_APP_SANDBOX=NO` and
+   `ENABLE_HARDENED_RUNTIME=NO`, i.e. the macOS-oriented Xcode 26 group, and iOS gates the
+   microphone through the purpose string plus TCC instead — so it *should* be irrelevant.
+   Worth revisiting only if permission behaves oddly on device.
+
+4. **Run the spike on the device — the actual open question.** Tap **Run capture spike**.
+   The verdict line is the answer to open risk 1. The
    `AVAudioSession` block reports the granted sample rate, channel count, and buffer
    duration — **those are the numbers later tickets need**, not what we asked for.
 5. **Open risk 2** — re-run with a wired headset and with Bluetooth connected, and record
@@ -198,5 +230,5 @@ open risks 1–6.
 8. **Open risk 5** — log RMS of a steady source with and without `Measurement` mode, to
    confirm the mode has a measurable effect and in which direction.
 
-Everything in 4–7 feeds ticket [`11`](11-interruption-and-gap-handling.md), which is
+Everything in 5–8 feeds ticket [`11`](11-interruption-and-gap-handling.md), which is
 blocked on this one.
