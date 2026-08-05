@@ -78,6 +78,16 @@ mechanics.
   builds also need the `audio-input` entitlement under Hardened Runtime. No official Tauri
   audio plugin exists. Full findings:
   [`research/01-native-audio-capture-path.md`](research/01-native-audio-capture-path.md).
+- [Prove native mic capture works in a Tauri iOS app on a physical device](issues/02-ios-capture-device-spike.md)
+  — **It captures. `01`'s architecture holds on real hardware.** On an iPhone 14 Pro
+  (iOS 26.5.2, cpal 0.18.1): non-zero PCM, **48 000 Hz, mono, f32, 1024-frame buffer**, no
+  gaps (469 × 1024 = 480 256 frames exactly), no stream errors, and `AVAudioSession` agrees
+  with cpal on the rate. Both preferred-value requests were granted exactly, though Apple
+  documents them as preferences — keep reading them back. **48 kHz clears research `03`'s
+  ~40 kHz filter minimum.** Free provisioning signs without a developer account, and the
+  `Info.plist` merge carries `NSMicrophoneUsageDescription` through. Ticket still open for the
+  interruption / route-change / `Measurement`-mode probes that ticket `11` needs — see its
+  open question about whether those should move to `11`.
 - [IEC 61672 A/C weighting filters: definitions and validation](issues/03-iec-weighting-filters.md)
   — **Build, don't adopt: cascaded biquads (3 sections for A, 2 for C), f64 throughout,
   DF2T, coefficients computed at runtime from the actual sample rate, no prewarping.** The

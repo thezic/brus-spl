@@ -264,10 +264,53 @@ open risks 1–6.
    provisioning profiles, so if the Developer App section is ever absent or trust is greyed
    out, suspect a configuration profile restricting developer apps.
 
-4. **Run the spike on the device — the actual open question.** Tap **Run capture spike**.
-   The verdict line is the answer to open risk 1. The
-   `AVAudioSession` block reports the granted sample rate, channel count, and buffer
-   duration — **those are the numbers later tickets need**, not what we asked for.
+4. ✅ **IT CAPTURES. Open risk 1 is resolved — `01`'s recommendation holds on real hardware.**
+
+   Run on an iPhone 14 Pro (iPhone15,2), iOS 26.5.2, cpal 0.18.1, 10 s run:
+
+   ```
+   CAPTURED — non-zero PCM received
+
+   device: coreaudio:default
+   format: f32
+   sample rate: 48000 Hz
+   channels: 1
+   buffer frames: 1024
+   blocks: 469  frames: 480256  all-zero block[s]: <cut off on screen>
+   rms: -59.6 dBFS   peak: -33.3 dBFS
+
+   AVAudioSession (ground truth):
+     sampleRate: 48000 Hz
+     inputNumberOfChannels: 1
+     IOBufferDuration: 0.021333 s
+   ```
+
+   **The numbers later tickets need, all cross-checked:**
+
+   | Quantity | Value | Check |
+   |---|---|---|
+   | Sample rate | **48 000 Hz** | session and cpal agree; no `!! rate disagreement` |
+   | Channels | **1** (mono) | `inputNumberOfChannels` confirms |
+   | Sample format | **f32** | as cpal's iOS backend hardcodes |
+   | Buffer | **1024 frames** | `IOBufferDuration` × rate = 0.021333 × 48000 = 1024.0 exactly |
+   | Stream integrity | **no gaps** | 469 × 1024 = 480 256 frames exactly; 480 256/48 000 = 10.005 s |
+   | Stream errors | **none** | error callback silent throughout |
+
+   Both *requests* were granted exactly — `setPreferredSampleRate(48000)` and the
+   1024-frame buffer. Apple documents both as preferences, so this is a fact about this
+   device and route, not a guarantee; keep reading them back rather than assuming.
+
+   **48 kHz clears research `03`'s ~40 kHz minimum** for the A/C weighting filters, so that
+   dependency is satisfied rather than hoped for.
+
+   Not read: the exact `all-zero blocks` count, cut off by the screen width. The `CAPTURED`
+   verdict guarantees it was not equal to the block count (that would have printed
+   `ALL-ZERO SAMPLES`), and the clean block arithmetic argues for zero.
+
+   **Method note for future runs: `println!` from Rust does not reach
+   `xcrun devicectl … --console`.** The capture attempt came back empty while the app was
+   demonstrably running. The on-screen report in `App.vue` is the only readable channel, which
+   is the reason it renders there. Do not plan device diagnostics around stdout.
 5. **Open risk 2** — re-run with a wired headset and with Bluetooth connected, and record
    the granted rate each time. Bluetooth SCO commonly forces 8–16 kHz, which would wreck
    both the FFT bin math and any weighting curve computed for 48 kHz. Decide whether we
@@ -285,3 +328,32 @@ open risks 1–6.
 
 Everything in 5–8 feeds ticket [`11`](11-interruption-and-gap-handling.md), which is
 blocked on this one.
+
+**Open question for Simon: can this ticket close now?** Its stated purpose — prove `01`'s
+recommendation captures on a physical device, and record the real rate and buffer size — is
+done. What remains (5–8) is all interruption, route-change and `Measurement`-mode probing,
+which is exactly what ticket `11` is about. Two options: resolve `02` and move 5–8 into `11`
+(unblocking it), or hold `02` open until the probes are run. The first looks cleaner, but it
+changes what `11` is scoped to do, so it is his call, not ours.
+
+**Workflow constraint discovered, relevant to every remaining device run:** the Wi-Fi network
+here has **client isolation**, so the phone cannot reach the Mac's dev server at all —
+`tauri ios dev` with hot reload is unusable on it. Safari on the phone could not load
+`http://192.168.50.195:1420/` either, which is the quick way to tell this apart from an app
+permission problem. Ruled out along the way: the macOS application firewall (its log shows
+`return known verdict: 1`, i.e. allow, for the running node binary — "automatically allow
+downloaded signed software" is enabled, which is why no sudo is ever needed), and Tailscale
+(stopped). Personal Hotspot over USB was tried as a bypass but the phone never served DHCP,
+leaving the Mac on a self-assigned `169.254.x` address.
+
+The working loop is therefore an **embedded build**, which needs no network whatsoever:
+
+```bash
+env -u FORCE_COLOR npx tauri ios build --debug
+xcrun devicectl device install app --device <udid> \
+  src-tauri/gen/apple/build/arm64/decibel-meter.ipa
+xcrun devicectl device process launch --device <udid> net.thezic.decibel-meter
+```
+
+Slower than hot reload, but immune to the network. Use `tauri ios dev` only on a network
+without client isolation.
