@@ -33,12 +33,26 @@ open question that may undermine the whole model.**
 - **The offset is only valid for the input it was set on.** `11` decided a route change does *not*
   invalidate the calibration, so the procedure must say plainly that plugging in a different
   microphone silently invalidates it. Built-in versus headset mics can differ by tens of dB.
-- **Open, and it needs answering before this ticket can be trusted: is the input path linear?**
-  Processing worth 21 dB is usually level-dependent, and a single broadband offset can only
-  correct a *linear* path. The check is cheap and needs no hardware — play the same tone at two
-  levels 20 dB apart in `Measurement` mode and confirm the measured delta matches. **If it does
-  not, this ticket's premise fails** and the model needs rethinking rather than adjusting. Also
-  in the map's fog.
+- ~~**Open, and it needs answering before this ticket can be trusted: is the input path linear?**~~
+  **Measured 2026-08-05 — it is linear, and this ticket's premise holds.** Same tone at two source
+  levels 20 dB apart in `Measurement` mode read **−57.7 dBFS** and **−37.8 dBFS**: a measured delta
+  of **19.9 dB against 20 dB expected**. A level-dependent path would have compressed by dB, not by
+  tenths, so the 21 dB `Measurement`/`Default` difference from `11` probe 4 is a fixed gain rather
+  than AGC-like processing. **A single broadband offset is defensible.**
+
+  The tight agreement also rules out its own most likely artefact. Room noise adds energy to the
+  *quiet* point, shrinking the measured delta — the same direction as compression — so both error
+  sources are jointly capped at 0.1 dB. For noise to account for even that, it would have to sit
+  ~16 dB below −57.7 dBFS (≈ −74 dBFS); had it been near `02`'s idle figure of −59.6 dBFS the delta
+  would have come out near 24 dB, not 19.9. Whatever the floor was, it was low enough not to matter.
+
+  **Limitation worth carrying rather than forgetting:** the test brackets −57.7 to −37.8 dBFS, and
+  AGC-style processing engages near the *top* of a range, not the bottom. `02` measured an idle room
+  at −59.6 rms / −33.3 peak, so a venue talk plausibly sits at or above the highest tested level —
+  the untested region is exactly where limiting would live if any survived `Measurement` mode. One
+  further run 20 dB higher would bracket the real operating point. Not blocking: linearity over a
+  20 dB span is what this ticket needed, and Simon noted the equipment on hand is not precise enough
+  to chase tenths regardless.
 
 **Inherited from ticket [`04`](04-weighting-architecture.md) — one thing that helps this ticket.**
 `04` exposed **dB(Z)** as a third mode, and its stated purpose is exactly this ticket's problem: Z

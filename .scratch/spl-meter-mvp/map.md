@@ -169,12 +169,17 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   31.6228 Hz and 7943.282 Hz). What remains genuinely open is only the **acoustic** end: no
   desk-side way to know a real sound's true SPL, which is a calibration question (`06`), not a
   DSP one.
-- **Whether the input path is linear, which decides if a single calibration offset is valid at
-  all.** Graduated from ticket `11`: `Measurement` mode is 21 dB quieter than `Default`, and
-  processing that large is usually level-dependent. The check is cheap and needs no hardware —
-  play the same tone at two levels 20 dB apart in `Measurement` mode and confirm the measured
-  delta matches. If it does not, ticket `06`'s single-offset model needs rethinking rather than
-  adjusting. **Do this before the spec is written.**
+- ~~**Whether the input path is linear, which decides if a single calibration offset is valid at
+  all.**~~ **Answered by measurement, 2026-08-05: it is linear.** Same tone at two source levels
+  20 dB apart in `Measurement` mode read **−57.7** and **−37.8 dBFS** — a delta of **19.9 dB against
+  20 expected**, where a level-dependent path would have compressed by dB rather than tenths. So
+  `11` probe 4's 21 dB is a **fixed gain**, not AGC, and ticket `06`'s single-offset model is
+  defensible rather than merely assumed. Recorded on
+  [`06`](issues/06-calibration-model.md), with the reasoning that rules out room noise as the source
+  of the 0.1 dB, plus the one thing the test does not cover: it brackets −57.7 to −37.8 dBFS, and
+  limiting engages near the *top* of a range, which is plausibly above the highest tested level.
+  A further run 20 dB up would bracket the real operating point — worth doing with better equipment,
+  not worth blocking on.
 - ~~**How the dB(A)/dB(C) switch presents**~~ — **mostly settled by `04`:** it is a
   **settings-page setting**, not a main-UI toggle, and there are **three** modes not two (Z was
   added). That rules out "show both at once", and `04` decision 2 depends on it — only the

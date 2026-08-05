@@ -297,9 +297,11 @@ probe 1 dropped, probe 3 deferred to implementation as verification of a chosen 
 
 ### Left undone deliberately
 
-- **The linearity check is unrun** — same sine at two levels 20 dB apart in `Measurement` mode,
-  verifying the measured delta matches. It needs no hardware, and ticket `06` rests on it: a
-  non-linear input path would invalidate the single-offset model rather than merely shift it.
-  Carried to the map's fog rather than blocking this ticket, since it belongs to calibration.
+- ~~**The linearity check is unrun**~~ — **run 2026-08-05, and the path is linear.** Same tone at
+  two source levels 20 dB apart in `Measurement` mode read **−57.7** and **−37.8 dBFS**, a delta of
+  **19.9 dB against 20 expected**. So probe 4's 21 dB is a fixed gain, not AGC-like processing, and
+  ticket [`06`](06-calibration-model.md)'s single-offset model is defensible. Recorded in full on
+  `06`, including why room noise cannot account for the 0.1 dB and the one span the test does not
+  cover.
 - **Probe 2b is uncharacterised** — the app dies on backgrounding, but whether iOS terminated it
   or our own code faulted was not established. Decision 4 makes it moot for the MVP.
