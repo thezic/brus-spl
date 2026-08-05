@@ -1,8 +1,13 @@
 # SPL Meter MVP — specification
 
-Status: **draft, awaiting approval** · Assembled by ticket
+Status: **approved, with no notes** (2026-08-05) · Assembled by ticket
 [`10`](issues/10-write-the-spec.md) from every resolved ticket on
-[the map](map.md) · 2026-08-05
+[the map](map.md)
+
+**Being built by the [`spl-meter-build` map](../spl-meter-build/map.md).** This spec is that
+map's authority: its tickets cite section numbers here rather than re-arguing anything. If a
+section turns out to be wrong, the correction belongs in a build ticket's resolution and then
+here — not in the code alone.
 
 This is the destination of the `spl-meter-mvp` map. It is written to be complete enough that
 an implementation session needs **no further decisions**. Where a decision was made by a

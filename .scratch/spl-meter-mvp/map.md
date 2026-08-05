@@ -34,6 +34,13 @@ which exists only to prove the architecture is viable.
 > start from the spec, not from this map — the map's value now is the *reasoning* behind each
 > decision, which the spec cites but does not reproduce.
 >
+> **That effort is now charted: [the `spl-meter-build` map](../spl-meter-build/map.md)**
+> (2026-08-05). It carries execution rather than decisions, and its destination is a meter
+> trustworthy enough to read a real talk — so it flexes scope against a fixed date and states
+> its drop order up front. It cites this spec by section throughout; it does not re-open
+> anything decided here. Its `b01`–`b13` numbering is deliberately distinct from this map's
+> `01`–`11`.
+>
 > Four things the spec deliberately leaves open, none of them blocking: its
 > [§15](spec.md#15-open-questions-this-spec-does-not-close). The cheapest and most useful is
 > **whether ~6 px per band reads at arm's length in a dim venue** — the build is already on the
