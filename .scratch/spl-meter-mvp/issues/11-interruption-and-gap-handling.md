@@ -2,7 +2,7 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: grilling (+ device probing — HITL, needs Simon and the iPhone)
-Status: open — unblocked, this is the frontier
+Status: resolved
 Blocked by: —  (was 02, now resolved)
 
 ## Question
@@ -268,3 +268,38 @@ Two constraints learned in `02`, both of which shape this work:
 
 The spike (`src-tauri/src/spike.rs` and friends) is kept alive for these probes and should be
 **deleted when this ticket resolves**.
+
+---
+
+## Resolution
+
+**Resolved.** All six decisions are made (above). The unrun probes no longer gate anything:
+probe 1 dropped, probe 3 deferred to implementation as verification of a chosen design.
+
+### What this ticket hands downstream
+
+- **Ticket [`05`](05-level-metrics-pipeline.md) — a new hard requirement.** The rolling L_eq must
+  track **coverage**, not only energy: decision 3 displays "33s of 60s". That changes the ring
+  buffer, which now has to know which slots hold real data rather than just accumulating. This
+  was not on `05`'s list before.
+- **Ticket [`06`](06-calibration-model.md) — two constraints.** `AVAudioSessionModeMeasurement`
+  is a *precondition* for the calibration model, not a refinement (21 dB of processing gain
+  without it, and probably level-dependent). And the stored offset is only valid for the input it
+  was set on, since decision 6 does not invalidate on route change.
+- **Ticket [`10`](10-write-the-spec.md) — two limitations to state plainly.** Readings on routes
+  below ~40 kHz are out of tolerance with no runtime indication (decision 5), and a changed
+  microphone silently invalidates the calibration offset (decision 6).
+- **A new MVP requirement:** the idle timer must be disabled. Discovered by probing, not by
+  charting. Without it the screen sleeps mid-talk and measurement dies on its own.
+- **An implementation warning:** a stream rebuild against a deactivated session fails with
+  `InvalidInput: channel count must be at least 1`, identical to the never-set-category error.
+  Recovery must `setActive(true)` first.
+
+### Left undone deliberately
+
+- **The linearity check is unrun** — same sine at two levels 20 dB apart in `Measurement` mode,
+  verifying the measured delta matches. It needs no hardware, and ticket `06` rests on it: a
+  non-linear input path would invalidate the single-offset model rather than merely shift it.
+  Carried to the map's fog rather than blocking this ticket, since it belongs to calibration.
+- **Probe 2b is uncharacterised** — the app dies on backgrounding, but whether iOS terminated it
+  or our own code faulted was not established. Decision 4 makes it moot for the MVP.

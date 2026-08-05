@@ -5,6 +5,21 @@ Type: grilling
 Status: open
 Blocked by: 04
 
+**Inherited from ticket [`11`](11-interruption-and-gap-handling.md) — a hard requirement not in
+the original list.** The rolling L_eq must track **coverage**, not only energy: `11` decided the
+display shows the level *and* how much of the window is real data (`33s of 60s`). So the ring
+buffer has to know which slots hold actual samples rather than merely accumulating into them.
+This is not cosmetic — a measured interruption produced a 27 s hole in a 30 s run with no error
+of any kind, and without coverage tracking the average would have looked entirely plausible while
+covering a tenth of the time it claimed.
+
+Also from `11`: capture is **foreground-only** and does not survive backgrounding, so the window
+never has to span an app suspension — but the idle timer must be disabled, which is why it can be
+assumed continuous while running.
+
+Hard numbers from `02`, measured: **48 000 Hz, mono, f32, 1024-frame buffer** (21.33 ms per
+block, 46.875 blocks/s). Useful for choosing the accumulation granularity.
+
 ## Question
 
 How each of the three numbers on screen is actually computed.

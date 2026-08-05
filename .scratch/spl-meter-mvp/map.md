@@ -99,12 +99,45 @@ mechanics.
   rate — dB(C) low-frequency accuracy is not the hard part. But there is a **~40 kHz minimum
   sample rate**, and f32 state can err by +3.9 dB on infrasonic content. Full findings:
   [`research/03-iec-weighting-filters.md`](research/03-iec-weighting-filters.md).
+- [Interruptions and sample gaps: how do they affect measurement validity?](issues/11-interruption-and-gap-handling.md)
+  — **Stay on released cpal 0.18.1 and handle interruptions ourselves; on a gap, show the L_eq
+  *and* the window coverage** (`33s of 60s`). Measured on device: Siri killed the stream
+  permanently after 3 s and **not one error reached Rust**, exactly as research `01` predicted —
+  a rolling L_eq would have averaged a 60 s window over 3 s of data and looked entirely plausible.
+  New finding: `inputNumberOfChannels` goes 1 → 0 and stays there, so the session is left
+  *deactivated* and recovery needs `setActive(true)`, not merely a stream rebuild. Also measured:
+  **`Measurement` mode is worth 21 dB** — `Default` applies that much processing gain, which makes
+  the mode a precondition for calibration rather than a refinement. Deliberately doing nothing
+  about route changes (no refusal on low-rate routes, no calibration invalidation); both are
+  accepted risks to be stated in the spec. **Foreground-only measurement, but the idle timer must
+  be disabled**, or the screen sleeps mid-talk and measurement stops on its own.
+
+## Requirements discovered while charting the terrain
+
+Not decisions and not fog — things the MVP must do that no ticket asked for, surfaced by probing:
+
+- **Disable the idle timer.** From `11`. Without it a long talk outlives the screen and
+  measurement dies silently.
+- **The rolling L_eq must track coverage, not just energy.** From `11`'s gap decision — the ring
+  buffer has to know which slots hold real data. Belongs to ticket `05`.
+- **`AVAudioSessionModeMeasurement` is mandatory**, not preferred. From `11`: 21 dB of processing
+  gain without it, very likely level-dependent, which would make the single-offset calibration
+  model meaningless. Belongs to tickets `06` and `10`.
+- **The iOS target must link `AVFAudio`, `AudioToolbox` and `CoreAudio`** via
+  `bundle.iOS.frameworks`. From `02`. Invisible to `cargo check`, since nothing links until Xcode
+  does.
 
 ## Not yet specified
 
 - **Desktop dev-loop fidelity** — how to test the meter with reproducible signals when
   the reference meter is at the venue and not on the desk. Probably generated tones or
   pink noise at a known level, but it depends on what the weighting architecture settles.
+- **Whether the input path is linear, which decides if a single calibration offset is valid at
+  all.** Graduated from ticket `11`: `Measurement` mode is 21 dB quieter than `Default`, and
+  processing that large is usually level-dependent. The check is cheap and needs no hardware —
+  play the same tone at two levels 20 dB apart in `Measurement` mode and confirm the measured
+  delta matches. If it does not, ticket `06`'s single-offset model needs rethinking rather than
+  adjusting. **Do this before the spec is written.**
 - **How the dB(A)/dB(C) switch presents** — a toggle, a segmented control, or something
   that shows both at once. Falls out of the layout prototype, may need its own ticket.
 - **Whether the weighting filter validation table becomes a unit test in the repo**, and if

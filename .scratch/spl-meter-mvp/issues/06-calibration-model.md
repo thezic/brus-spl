@@ -5,6 +5,22 @@ Type: grilling
 Status: open
 Blocked by: 05
 
+**Inherited from ticket [`11`](11-interruption-and-gap-handling.md) — two constraints, and one
+open question that may undermine the whole model.**
+
+- **`AVAudioSessionModeMeasurement` is a precondition, not a refinement.** Measured on device:
+  the same 440 Hz sine read **−51.7 dBFS** in `Measurement` mode and **−30.6 dBFS** in `Default`
+  — 21 dB of processing gain. A stored offset only means something if the mode is fixed.
+- **The offset is only valid for the input it was set on.** `11` decided a route change does *not*
+  invalidate the calibration, so the procedure must say plainly that plugging in a different
+  microphone silently invalidates it. Built-in versus headset mics can differ by tens of dB.
+- **Open, and it needs answering before this ticket can be trusted: is the input path linear?**
+  Processing worth 21 dB is usually level-dependent, and a single broadband offset can only
+  correct a *linear* path. The check is cheap and needs no hardware — play the same tone at two
+  levels 20 dB apart in `Measurement` mode and confirm the measured delta matches. **If it does
+  not, this ticket's premise fails** and the model needs rethinking rather than adjusting. Also
+  in the map's fog.
+
 ## Question
 
 A single broadband offset in dB, set by matching a proper SPL meter that is present at the
