@@ -3,7 +3,7 @@
 Parent: [SPL Meter MVP](../map.md)
 Type: task
 Status: open
-Blocked by: 01, 02, 03, 04, 05, 06, 07, 08, 09, 11
+Blocked by: 08, 09  (01, 02, 03, 04, 05, 06, 07, 11 now resolved)
 
 ## Question
 
@@ -52,6 +52,27 @@ survive backgrounding), and that the L_eq display carries **window coverage** al
   number, and the spec should tell the reader to keep one. (c) **`AVAudioSessionModeMeasurement` is a
   precondition, not a refinement** — 21 dB of processing gain without it, so a stored offset means
   nothing if the mode is not fixed. The mode is read back and a mismatch logged, with nothing in the UI.
+
+**Inherited from ticket [`07`](07-spectrogram-form.md) — the spectrogram's parameters, and one thing
+it must not be read as claiming.**
+
+- **State the parameters plainly:** a scrolling spectrogram, horizontal with time flowing right→left,
+  drawn on **32 fixed one-third-octave bands from 12.5 Hz to 16 kHz**, one column per 100 ms, **N=8192**
+  Hann, and a **span that follows the L_eq window** so the picture is what is inside the number.
+- **The display is always unweighted, in every meter mode.** This is the one that must be said out loud:
+  the picture and the number are deliberately different quantities, so a reader who compares them
+  band-by-band against a dB(A) or dB(C) reading will conclude the app is inconsistent. State the reason —
+  A-weighting the display makes the rumble stripe vanish, and dB(A) mode is exactly when you want to know
+  the rumble is there.
+- **A band colour is not a calibrated band SPL.** The single broadband offset scales the picture as
+  honestly as it scales the numbers and no more, and a phone mic's frequency response is worst exactly
+  where dB(C) lives. Same limitation as `06`'s, now with a per-band face.
+- **Two smaller limitations:** the **12.5 Hz band is interpolated** at N=8192 (it is narrower than one
+  bin), so the lowest band on the picture is the one band the picture cannot honestly draw; and at a
+  **120 s span** syllable structure is compressed into texture, which is a consequence of the span
+  following the window rather than a defect.
+- **The picture reports its own gaps as holes** — background, not a low level — for the same reason the
+  L_eq shows `--` at zero coverage.
 
 **Inherited from ticket [`05`](05-level-metrics-pipeline.md).**
 

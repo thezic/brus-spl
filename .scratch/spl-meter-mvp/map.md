@@ -159,6 +159,23 @@ mechanics.
   offset is **displayed for writing down**, because free provisioning's weekly reinstall can take the
   data container with it.
 
+- [Spectrogram: parameters and visual form](issues/07-spectrogram-form.md)
+  — **A scrolling spectrogram, horizontal, on 32 fixed one-third-octave bands — the display draws what
+  an FFT can actually deliver, at a colour scale that means the same thing on every device.** Simon
+  confirmed the word (spectrogram, not Decibel X's bars) and then took neither prototype variant whole:
+  A's frame with B's axis. Three parameter questions turned out to have *measured* answers rather than
+  aesthetic ones. Cells are **band energy, not per-bin mean** — pink noise draws flat with `sum` and
+  picks up a fabricated **32 dB roll-off** with `mean`. **N = 8192**, because at N=2048 everything below
+  **126 Hz** is bin-borrowing, which is the whole dB(C) region. And a pixel-resolution log axis
+  over-promises at every N (25 % of it interpolated at N=8192), while third-octave bands starve only at
+  12.5 Hz. The surprise: an energy-summed display's dB scale **moves with the row layout** (~10 dB
+  between 24 rows and 220), so fixing the layout is what makes a labelled legend honest. The display is
+  **always unweighted** — A-weighting it made the rumble stripe vanish, and dB(A) mode is exactly when
+  you want to see rumble — and its **span follows the L_eq window**, so the picture is what is inside the
+  number. Fixed dB window, no auto-ranging; gaps drawn as holes, not as fake quiet. **`08`'s feared bulk
+  payload evaporates: 32 band levels, ≈1.3 kB/s, not 4 096 bins.** Variant C (calm, no chrome) failed its
+  own bet and that was the useful result — with no hue the rumble and the speech merged into one haze.
+
 ## Requirements discovered while charting the terrain
 
 Not decisions and not fog — things the MVP must do that no ticket asked for, surfaced by probing:
@@ -190,6 +207,10 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   31.6228 Hz and 7943.282 Hz). What remains genuinely open is only the **acoustic** end: no
   desk-side way to know a real sound's true SPL, which is a calibration question (`06`), not a
   DSP one.
+  **`07` adds two eyeball tests for the display half**, both of which caught real errors in the
+  prototype: **pink noise must draw flat** (it is equal energy per third-octave by definition, so a
+  sloped picture means the band summarisation is wrong), and an **exponential sweep must draw a
+  straight diagonal** (a curve means the log axis mapping is wrong). Neither needs hardware.
 - ~~**Whether the input path is linear, which decides if a single calibration offset is valid at
   all.**~~ **Answered by measurement, 2026-08-05: it is linear.** Same tone at two source levels
   20 dB apart in `Measurement` mode read **−57.7** and **−37.8 dBFS** — a delta of **19.9 dB against

@@ -2,8 +2,30 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: prototype
-Status: open
-Blocked by: 07  (05 now resolved)
+Status: open — unblocked, on the frontier
+Blocked by: —  (07 now resolved, and 05 before it)
+
+**Inherited from ticket [`07`](07-spectrogram-form.md) — the spectrogram arrives with a geometry
+rather than as an unknown shape, and it brings one obligation.**
+
+- **Wide and short: ~200 px tall at full width, sitting under the number.** `07` chose a horizontal
+  frame over a vertical waterfall precisely on this ticket's behalf — the waterfall wanted 360+ px of
+  the portrait height that the number, coverage, max hold, the two mode indicators and reset are all
+  already competing for.
+- **Three gutters are part of the design, not decoration** — ~40 px left for frequency labels, ~20 px
+  bottom for the time axis, ~52 px right for the colour legend. **If space forces the legend out, the
+  picture loses its absolute meaning**; that is a trade this ticket may make, but knowingly rather than
+  by cropping.
+- **The window length has to be visible near the picture**, because `07` decision 8 makes the
+  spectrogram's span *follow* the L_eq window (10/30/60/120 s). The picture is then literally what is
+  inside the number — which only reads that way if the two are seen together.
+- **A gap in the picture is a hole**, drawn as background (`07` decision 11). Like `--`, it is a
+  designed state rather than a rendering failure, so it should look deliberate.
+- Also useful: `07`'s prototype ran at ~390 px wide and **could not be judged on real glass** (Wi-Fi
+  client isolation keeps it off the phone). 32 bands over 200 px is ~6 px per band. Whether that reads
+  at arm's length in a dim venue is the open question `07` handed on, and it is the same question that
+  killed its "calm, no chrome" variant — so if this ticket gets to a device, that is the thing to look
+  at first.
 
 **Inherited from ticket [`05`](05-level-metrics-pipeline.md) — four obligations, one of them new
 work rather than a constraint.**
