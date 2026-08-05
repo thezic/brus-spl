@@ -251,6 +251,19 @@ open risks 1–6.
    until Xcode does. Any future crate that pulls in a new Apple framework will need the same
    treatment.
 
+   **With the frameworks linked, the app built, signed, installed and launched.** iOS then
+   blocked it on first run with "Untrusted Developer" / *Ej betrodd utvecklare* — expected
+   under free provisioning, and part of open risk 6's workflow. Cleared **on the device**:
+
+   > Settings → General → VPN & Device Management → Developer App →
+   > "Apple Development: simondhlbrg@gmail.com" → Trust
+   >
+   > (Swedish: Inställningar → Allmänt → VPN och enhetshantering → Utvecklarapp → Lita på)
+
+   Once per signing certificate, not per build. Note the phone also carries Congenial Data AB
+   provisioning profiles, so if the Developer App section is ever absent or trust is greyed
+   out, suspect a configuration profile restricting developer apps.
+
 4. **Run the spike on the device — the actual open question.** Tap **Run capture spike**.
    The verdict line is the answer to open risk 1. The
    `AVAudioSession` block reports the granted sample rate, channel count, and buffer
