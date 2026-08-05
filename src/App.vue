@@ -1,191 +1,194 @@
 <script setup lang="ts">
-// Throwaway harness for the capture spike (ticket 02) — delete with src-tauri/src/spike.rs.
-// This is deliberately not a meter layout: how the real screen looks is ticket 09's job,
-// and guessing at it here would pre-empt that prototype.
+// TEMPORARY READOUT — ticket b01. The real screen is b06, and it replaces this file whole.
 //
-// It exists because the spike's target is a physical iPhone, where there is no terminal.
-// The report has to be readable on the device itself, not only in the Xcode console.
-import { ref } from "vue";
+// This is not a meter layout and is not trying to be one. It exists because `println!` from
+// Rust does not reach `xcrun devicectl … --console` (spec §2.2), so the only way to see
+// whether the phone is actually capturing — and what rate, channel count and mode it was
+// granted — is to put those numbers on the phone's own screen.
+//
+// Nothing here is gated on `import.meta.env.DEV`: a device build is a *release* build.
+import { onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
-// 30s by default: ticket 11's probes need time to take a call, invoke Siri, or plug in a
-// headset *while* the run is in progress.
-const seconds = ref(30);
-const measurementMode = ref(true);
-const running = ref(false);
-const output = ref("");
-const failed = ref(false);
+interface SessionFacts {
+  sampleRate: number;
+  inputChannels: number;
+  mode: string;
+  measurementMode: boolean;
+  ioBufferDuration: number;
+  permissionGranted: boolean;
+}
 
-async function runSpike() {
-  running.value = true;
-  failed.value = false;
-  output.value = `capturing for ${seconds.value}s…`;
+interface CaptureFacts {
+  device: string;
+  sampleFormat: string;
+  sampleRate: number;
+  channels: number;
+  bufferFrames: number | null;
+  session: SessionFacts | null;
+}
+
+type CaptureState =
+  | { state: "starting" }
+  | ({ state: "running" } & CaptureFacts)
+  | { state: "failed"; reason: string };
+
+interface Readout {
+  capture: CaptureState;
+  blocks: number;
+  dropped: number;
+  dbfs: number | null;
+  lastError: string | null;
+}
+
+// 10 Hz, matching the tick b05 will replace this polling with.
+const POLL_MS = 100;
+
+const readout = ref<Readout | null>(null);
+const pollError = ref<string | null>(null);
+let timer: number | undefined;
+
+async function poll() {
   try {
-    output.value = await invoke<string>("run_capture_spike", {
-      seconds: seconds.value,
-      measurementMode: measurementMode.value,
-    });
+    readout.value = await invoke<Readout>("capture_readout");
+    pollError.value = null;
   } catch (e) {
-    failed.value = true;
-    output.value = String(e);
-  } finally {
-    running.value = false;
+    pollError.value = String(e);
   }
 }
+
+onMounted(() => {
+  void poll();
+  timer = window.setInterval(() => void poll(), POLL_MS);
+});
+
+onUnmounted(() => {
+  if (timer !== undefined) window.clearInterval(timer);
+});
 </script>
 
 <template>
-  <main class="container">
-    <h1>Capture spike</h1>
-    <p class="sub">
-      Ticket 02 — proves cpal + AVAudioSession deliver non-zero PCM. Not the meter.
+  <main>
+    <p class="tag">b01 — temporary capture readout</p>
+
+    <!-- `--` rather than a number whenever the level is undefined: exact-zero blocks from a
+         denied microphone must not render as a very quiet room (spec §6.9). -->
+    <p class="hero">
+      {{ readout?.dbfs != null ? readout.dbfs.toFixed(1) : "--" }}
+      <span class="unit">dBFS</span>
     </p>
 
-    <div class="row">
-      <label for="seconds">seconds</label>
-      <input id="seconds" v-model.number="seconds" type="number" min="1" max="300" />
-    </div>
+    <template v-if="readout">
+      <p class="state">
+        {{ readout.capture.state }}
+        <span v-if="readout.capture.state === 'failed'"> — {{ readout.capture.reason }}</span>
+      </p>
 
-    <label class="row check">
-      <input id="mode" v-model="measurementMode" type="checkbox" />
-      <span>
-        <code>Measurement</code> mode
-        <small>{{ measurementMode ? "(minimal processing)" : "(Default — control case)" }}</small>
-      </span>
-    </label>
+      <dl>
+        <dt>blocks</dt>
+        <dd>{{ readout.blocks }}</dd>
+        <dt>dropped</dt>
+        <dd>{{ readout.dropped }}</dd>
 
-    <button :disabled="running" @click="runSpike">
-      {{ running ? "capturing…" : "Run capture spike" }}
-    </button>
+        <template v-if="readout.capture.state === 'running'">
+          <dt>rate</dt>
+          <dd>{{ readout.capture.sampleRate }} Hz</dd>
+          <dt>channels</dt>
+          <dd>{{ readout.capture.channels }}</dd>
+          <dt>format</dt>
+          <dd>{{ readout.capture.sampleFormat }}</dd>
+          <dt>buffer</dt>
+          <dd>{{ readout.capture.bufferFrames ?? "?" }} frames</dd>
+          <dt>device</dt>
+          <dd>{{ readout.capture.device }}</dd>
 
-    <pre v-if="output" :class="{ failed }">{{ output }}</pre>
+          <template v-if="readout.capture.session">
+            <dt>session rate</dt>
+            <dd>{{ readout.capture.session.sampleRate }} Hz</dd>
+            <dt>session ch</dt>
+            <dd>{{ readout.capture.session.inputChannels }}</dd>
+            <dt>mode</dt>
+            <dd>
+              {{ readout.capture.session.mode }}
+              <span v-if="!readout.capture.session.measurementMode"> (NOT Measurement)</span>
+            </dd>
+            <dt>io buffer</dt>
+            <dd>{{ (readout.capture.session.ioBufferDuration * 1000).toFixed(2) }} ms</dd>
+            <dt>mic</dt>
+            <dd>{{ readout.capture.session.permissionGranted ? "granted" : "NOT GRANTED" }}</dd>
+          </template>
+        </template>
+      </dl>
 
-    <p class="hint">
-      Ticket 11 probes: take a call or invoke Siri mid-run (interruption); plug in or
-      unplug headphones mid-run (route change); connect Bluetooth and check the granted
-      rate; run the same steady sound with the mode above on and off. Watch
-      <code>gaps</code>, <code>session changes</code> and <code>stream errors</code>.
-    </p>
+      <p v-if="readout.lastError" class="err">stream error: {{ readout.lastError }}</p>
+    </template>
+
+    <p v-if="pollError" class="err">{{ pollError }}</p>
   </main>
 </template>
 
 <style>
 :root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 16px;
-  line-height: 1.5;
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-  -webkit-font-smoothing: antialiased;
+  color: #eee;
+  background: #111;
   -webkit-text-size-adjust: 100%;
 }
 
-.container {
-  margin: 0 auto;
-  padding: 2rem 1rem;
-  max-width: 40rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-h1 {
+body {
   margin: 0;
-  font-size: 1.5rem;
 }
 
-.sub,
-.hint {
+main {
+  padding: env(safe-area-inset-top, 0) 1rem 1rem;
+  padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
+}
+
+.tag {
+  margin: 0;
+  font-size: 0.75rem;
+  opacity: 0.5;
+}
+
+.hero {
+  /* Big enough to read from across a room, which is the entire point of this screen. */
+  margin: 0.5rem 0;
+  font-size: 3.5rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.unit {
+  font-size: 1rem;
+  opacity: 0.6;
+}
+
+.state {
+  margin: 0 0 0.75rem;
+  opacity: 0.8;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.15rem 0.75rem;
   margin: 0;
   font-size: 0.85rem;
-  opacity: 0.7;
 }
 
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+dt {
+  opacity: 0.5;
 }
 
-.check {
-  cursor: pointer;
-}
-
-.check input {
-  /* Sized to be tappable on a phone rather than a default 13px checkbox. */
-  width: 1.4rem;
-  height: 1.4rem;
-  flex: none;
-}
-
-small {
-  opacity: 0.65;
-}
-
-code {
-  font-size: 0.9em;
-}
-
-input {
-  width: 6rem;
-  padding: 0.6em 0.8em;
-  font: inherit;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  background: #fff;
-  color: inherit;
-}
-
-button {
-  /* Sized for a thumb: this gets tapped on a phone, one-handed, at a venue. */
-  padding: 0.9em 1.2em;
-  font: inherit;
-  font-weight: 500;
-  cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: #396cd8;
-  color: #fff;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-pre {
+dd {
   margin: 0;
-  padding: 0.8rem;
-  /* The report is fixed-width columns; let it scroll rather than reflow. */
-  overflow-x: auto;
-  font-size: 0.8rem;
-  line-height: 1.45;
-  background: #fff;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  white-space: pre;
+  overflow-wrap: anywhere;
 }
 
-pre.failed {
-  border-color: #d33;
-  color: #a00;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
-  }
-
-  input,
-  pre {
-    background: #1f1f1f;
-    border-color: #444;
-  }
-
-  pre.failed {
-    border-color: #d33;
-    color: #ff8f8f;
-  }
+.err {
+  margin-top: 0.75rem;
+  color: #ff8f8f;
+  overflow-wrap: anywhere;
 }
 </style>

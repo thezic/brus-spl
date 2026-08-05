@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-A Tauri 2 + Vue 3 + TypeScript + Vite app, still very early. The planning effort for the MVP lives in `.scratch/spl-meter-mvp/` — `map.md` is the index, `issues/` are the tickets, `research/` holds the resolved investigations. **Read the map before starting work**; most tickets there produce decisions, not code, and the spec (`issues/10`) is the destination.
+A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: its destination is `.scratch/spl-meter-mvp/spec.md`, which is now the authority for *what* to build. The reasoning behind every decision lives in that map's `issues/` and `research/`, two links away — the spec cites the ticket that made each call rather than reproducing the argument.
 
-The only code written so far is the **capture spike** for ticket `02` (`src-tauri/src/spike.rs`, `src/App.vue`, `src/bin/spike.rs`). It is deliberately throwaway — it exists to prove the audio architecture on a physical iPhone, not to become the meter. `App.vue` in particular is a bare harness, not a layout: how the screen actually looks is ticket `09`'s job. Delete all of it once the spec is written.
+**Implementation runs from `.scratch/spl-meter-build/`** — `map.md` is the index, `issues/b01`–`b13` are the tickets. **Read that map before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b13` here) are deliberately distinct.
 
-No test runner, linter, or formatter is configured. If a task needs one, ask before adding it. Note that ticket `03` produced a 34-frequency weighting-filter validation table that wants to become a unit test — whether to add a runner for it is an open question on the map, not a decision to make unilaterally.
+The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `src/App.vue` currently holds a deliberately temporary readout, not a layout — the real screen is ticket `b06`.
+
+No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
 ## Commands
 
@@ -28,8 +30,8 @@ Rust-only checks, run from `src-tauri/`:
 cargo check
 cargo clippy
 cargo fmt
+cargo test                     # the 34-row weighting-filter table (b02), at 4 sample rates
 
-cargo run --bin spike          # capture spike, 5s (ticket 02); takes a seconds argument
 cargo check --target aarch64-apple-ios --lib   # typechecks the iOS-only AVAudioSession code
 ```
 
@@ -90,7 +92,7 @@ Two failure modes that look nothing alike but are easily confused:
 
 | Symptom | Cause |
 |---|---|
-| `InvalidInput: channel count must be at least 1` | session category was never set |
+| `InvalidInput: channel count must be at least 1` | session category was never set, **or** the session is deactivated after an interruption |
 | buffers of exact zeros | microphone permission not granted |
 
 Permission wiring, all of which is in place:
@@ -98,4 +100,7 @@ Permission wiring, all of which is in place:
 - `src-tauri/Info.plist` — `NSMicrophoneUsageDescription`. Serves **both** iOS and macOS (iOS also picks up `Info.ios.plist`; macOS does not). Missing this key is a process kill, not a warning.
 - `src-tauri/Entitlements.plist` — `com.apple.security.device.audio-input`, referenced from `bundle.macOS.entitlements`. Needed because Tauri enables Hardened Runtime by default, so *signed* macOS builds fail capture without it. Unsigned `tauri dev` binaries don't need it, which makes the dev loop the permissive case and the shipped bundle the strict one.
 
-The spike lives in `src-tauri/src/spike.rs` and is **throwaway** — it exists to prove the above works on a physical device, not to become the meter. Run it on the desktop with `cargo run --bin spike`.
+This now lives in `src-tauri/src/session.rs` (iOS-only, behind `cfg(target_os = "ios")`) and `src-tauri/src/capture.rs`, built by ticket `b01`, which replaced the throwaway spike. Spec §3 is the authority. Two properties of that code are load-bearing and easy to undo by accident:
+
+- **The session is configured before cpal is touched, and every value is read back as ground truth** — `sampleRate`, `inputNumberOfChannels`, `mode`, `IOBufferDuration`. Apple documents the rate and buffer duration as *preferences*. The `mode` read-back is not ceremony: `AVAudioSessionModeMeasurement` is worth **21 dB of fixed processing gain**, so if it silently fails to apply, the stored calibration offset is wrong by ~21 dB with nothing on screen to show it.
+- **The capture callback does the minimum and allocates nothing** — f32→f64 at the block boundary, channel 0 only when the stream reports more than one (never average; it moves the level by up to 6 dB and would make calibration depend on channel count), no DC blocker, and one `{sum_sq, n, t}` summary pushed into a bounded lock-free SPSC queue (`rtrb`). A queue overflow must degrade into lost coverage, never a wrong number.
