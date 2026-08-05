@@ -148,11 +148,17 @@ shows up as `<< NO AUDIO THIS INTERVAL`.
 Nothing below is startable without the device. Acceptance criteria are research `01`
 open risks 1–6.
 
-1. **Set `bundle.iOS.developmentTeam`** in `tauri.conf.json` to the Personal Team ID, or
-   export `APPLE_DEVELOPMENT_TEAM`. Left unset deliberately — I don't know the value.
-   Do this first: open risk 6 says nothing else is testable until deployment works.
+1. ✅ **`bundle.iOS.developmentTeam` is set** to `QV7UX8JMYX` — the Personal Team on
+   Simon's Apple ID (`simondhlbrg@gmail.com`, `O=Simon Dahlberg`), read from the `OU` field
+   of the Apple Development certificate. Note the trap: the 10-character string in the
+   certificate's `CN` parentheses is the *certificate* identifier, not the Team ID, and the
+   two are indistinguishable by format. This machine also carries two Congenial Data AB
+   identities, and both existing provisioning profiles belong to that org — so the wrong ID
+   is easy to pick up by accident.
 2. `npm run tauri ios init`, then `npm run tauri ios dev`. Then
-   `./scripts/check-ios-plist.sh`.
+   `./scripts/check-ios-plist.sh`. **Open risk 6 is still open**: a Personal Team satisfies
+   Tauri's requirement on paper, but free provisioning actually deploying to the device is
+   unproven, and profiles expire after 7 days — record the re-signing workflow.
 3. Tap **Run capture spike**. The verdict line is the answer to open risk 1. The
    `AVAudioSession` block reports the granted sample rate, channel count, and buffer
    duration — **those are the numbers later tickets need**, not what we asked for.

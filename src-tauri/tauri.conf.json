@@ -33,6 +33,9 @@
     ],
     "macOS": {
       "entitlements": "./Entitlements.plist"
+    },
+    "iOS": {
+      "developmentTeam": "QV7UX8JMYX"
     }
   }
 }
