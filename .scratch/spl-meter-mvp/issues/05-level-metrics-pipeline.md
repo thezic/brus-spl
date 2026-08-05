@@ -2,8 +2,24 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: grilling
-Status: open
-Blocked by: 04
+Status: open — unblocked, on the frontier
+Blocked by: —  (was 04, now resolved)
+
+**Inherited from ticket [`04`](04-weighting-architecture.md).** The input to this pipeline is now
+defined: **one** weighting chain runs at a time (the mode selected on the settings page — C, A or
+Z), cascaded f64 biquads in the audio callback, and the accumulator averages `p_weighted²`
+**linearly with no time weighting inside it** (clause 3.9 NOTE 3 — F/S belong to L_AF/L_AS, not
+L_Aeq). Smooth the *displayed* number if the instantaneous readout needs it; keep the accumulator
+plain.
+
+Two consequences for the window specifically:
+
+- **It has a second reset cause** besides the manual reset button: **changing the weighting
+  setting**. LCeq and LAeq are different quantities and cannot be averaged together, so prior
+  energy is incommensurable and the window restarts from empty. The filter's settling transient is
+  buried by this, so it needs no separate handling.
+- **A sample-rate change is *not* a reset** — it is gap slots, per `11` decision 3. Same quantity,
+  differently-designed filter, so the old slots remain valid energy.
 
 **Inherited from ticket [`11`](11-interruption-and-gap-handling.md) — a hard requirement not in
 the original list.** The rolling L_eq must track **coverage**, not only energy: `11` decided the

@@ -9,7 +9,9 @@ implementation runs as a separate effort with no decisions left open.
 
 The MVP being specified:
 
-- **Meter** — dB(C) default, dB(A) selectable. Rolling L_eq over a configurable window
+- **Meter** — dB(C) default, dB(A) selectable, **dB(Z) as a third mode** (added by ticket `04`;
+  it is the filters-off diagnostic path, not a third opinion about loudness). The choice lives on
+  a **settings page**, not the main screen. Rolling L_eq over a configurable window
   (default 60 s), a live instantaneous level, and a max hold cleared by a manual reset
   button. No warnings, no automatic resets.
 - **Spectrogram** — live frequency display.
@@ -111,6 +113,18 @@ mechanics.
   about route changes (no refusal on low-rate routes, no calibration invalidation); both are
   accepted risks to be stated in the spec. **Foreground-only measurement, but the idle timer must
   be disabled**, or the screen sleeps mid-talk and measurement stops on its own.
+- [Weighting architecture: time-domain biquads or FFT-domain?](issues/04-weighting-architecture.md)
+  — **Two pipelines: biquads produce the number, the FFT only draws the spectrogram.** The trade was
+  put to Simon rather than assumed, and he took defensibility — FFT-domain C over-reads by
+  **+6.1 dB at N=1024** on infrasonic content, and over-reading means false alarms against the
+  70 dB ceiling. **Only the selected weighting chain runs**, because A/C/Z turned out to be a
+  **settings-page setting** rather than a main-UI toggle: changing it resets the rolling window,
+  acceptable for a deliberate act. The FFT taps the **raw** samples ahead of the filter, so `07`
+  still owns whether the display is weighted. **Z-weighting is exposed as a third mode** (Simon's
+  call, against the recommendation) — it is the bypass path, and the only way to exercise
+  calibration with the filters out of the way. DF2T is **hand-rolled**, no `biquad` crate. And `04`
+  **declines** research `03`'s sub-40 kHz guard, closing a contradiction with `11` decision 5:
+  a log line, nothing in the UI.
 
 ## Requirements discovered while charting the terrain
 
@@ -132,19 +146,32 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
 - **Desktop dev-loop fidelity** — how to test the meter with reproducible signals when
   the reference meter is at the venue and not on the desk. Probably generated tones or
   pink noise at a known level, but it depends on what the weighting architecture settles.
+  **Mostly answered by `04`:** with biquads settled, the *filter* needs no hardware and no
+  reference meter — synthesise tones in Rust at the **exact** one-third-octave frequencies and
+  assert against research `03` §4.2 (tight on the two design invariants: C = −3.010 dB at
+  31.6228 Hz and 7943.282 Hz). What remains genuinely open is only the **acoustic** end: no
+  desk-side way to know a real sound's true SPL, which is a calibration question (`06`), not a
+  DSP one.
 - **Whether the input path is linear, which decides if a single calibration offset is valid at
   all.** Graduated from ticket `11`: `Measurement` mode is 21 dB quieter than `Default`, and
   processing that large is usually level-dependent. The check is cheap and needs no hardware —
   play the same tone at two levels 20 dB apart in `Measurement` mode and confirm the measured
   delta matches. If it does not, ticket `06`'s single-offset model needs rethinking rather than
   adjusting. **Do this before the spec is written.**
-- **How the dB(A)/dB(C) switch presents** — a toggle, a segmented control, or something
-  that shows both at once. Falls out of the layout prototype, may need its own ticket.
+- ~~**How the dB(A)/dB(C) switch presents**~~ — **mostly settled by `04`:** it is a
+  **settings-page setting**, not a main-UI toggle, and there are **three** modes not two (Z was
+  added). That rules out "show both at once", and `04` decision 2 depends on it — only the
+  selected chain runs. What is left for the layout work is narrow: how the *active* mode is
+  indicated on the main screen.
 - **Whether the weighting filter validation table becomes a unit test in the repo**, and if
   so what test runner gets added — the project has none, and `CLAUDE.md` says to ask before
   adding one. Ticket `03` produced a ready-to-use 34-frequency table, so this is now a
   concrete question rather than a vague one; it needs the implementation effort to exist
   first, so it may belong to that effort rather than this map.
+  **The Rust half dissolved in `04`:** hand-rolled biquads with runtime coefficient derivation
+  *need* that table as a test, and it is a pure Rust test — `cargo test` plus a `#[cfg(test)]`
+  module adds no dependency, no config and no tooling decision, so there is nothing to ask
+  about. Only the frontend testing question remains, and nothing so far requires it.
 - **Free-provisioning friction** — the 7-day reinstall cycle may become annoying enough
   to need a decision. Signing itself works (`02`), but the expiry has not been hit yet, so the
   re-signing workflow is still unrecorded.

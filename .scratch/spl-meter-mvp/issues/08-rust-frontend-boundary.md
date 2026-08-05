@@ -5,6 +5,17 @@ Type: grilling
 Status: open
 Blocked by: 05
 
+**Inherited from ticket [`04`](04-weighting-architecture.md).** The traffic is now known to be
+lopsided in exactly the way this ticket's last paragraph guessed: `04` chose two pipelines, so the
+meter crosses as **a scalar plus window coverage per display frame** — trivial — and **FFT
+magnitude frames are the only bulk payload**. Get the spectrogram's path right and the boundary is
+right.
+
+Also settled upstream: the weighting mode (C/A/Z) is a **settings-page** value, and changing it
+resets the rolling window (`04` decision 2, `05`). So the "who owns settings" question has at least
+one answer already implied — a weighting change is a command that reconfigures the DSP, not a view
+preference the frontend can hold privately.
+
 ## Question
 
 Audio capture and DSP live in Rust; the display lives in Vue. What crosses the bridge?

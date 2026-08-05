@@ -21,6 +21,16 @@ open question that may undermine the whole model.**
   not, this ticket's premise fails** and the model needs rethinking rather than adjusting. Also
   in the map's fog.
 
+**Inherited from ticket [`04`](04-weighting-architecture.md) — one thing that helps this ticket.**
+`04` exposed **dB(Z)** as a third mode, and its stated purpose is exactly this ticket's problem: Z
+is the **bypass path**, RMS straight off the raw samples with no filter in the way. That gives the
+calibration procedure — and the unrun linearity check above — a way to exercise the input path
+*without* the weighting filters as a confounder. Worth using rather than reasoning around.
+
+Also from `04`: there is **no DC blocker** in the chain, so a Z reading includes the microphone's DC
+bias. Irrelevant for A and C (both are high-passes) but it is a floor on how quiet a Z measurement
+can read, and worth knowing before treating a Z number as ground truth.
+
 ## Question
 
 A single broadband offset in dB, set by matching a proper SPL meter that is present at the
