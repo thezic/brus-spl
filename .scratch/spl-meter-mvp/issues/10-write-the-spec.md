@@ -2,7 +2,8 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: task
-Status: open — unblocked, on the frontier. **Every other ticket on the map is resolved.**
+Status: resolved — [`../spec.md`](../spec.md) written and **approved** (2026-08-05, no notes).
+**Every other ticket on the map is resolved.**
 Blocked by: —  (01, 02, 03, 04, 05, 06, 07, 08, 09, 11 all resolved)
 
 ## Question
@@ -163,3 +164,84 @@ it must not be read as claiming.**
   (C); all discretisation error lives above 4 kHz and stays inside the class-1 design band at
   44.1 and 48 kHz. **The microphone, not the filter, is the binding error source** — which is the
   honest framing for why no conformance is claimed.
+
+---
+
+## Answer
+
+**Written and approved: [`../spec.md`](../spec.md), 18 sections, 1 495 lines.** Approved in
+Plannotator on 2026-08-05 with **no notes** — so nothing here is a revision of what was put up.
+
+Every item this ticket listed is in it, and every decision cites the ticket that made it
+(`04 d1`-style) so the spec is a destination rather than a replacement for the reasoning. The
+structure: what the app is and the three principles it obeys · platform, build and permissions ·
+capture · interruptions and gaps · weighting filters · level metrics · spectrogram · calibration ·
+the Rust↔frontend contract · settings and persistence · screen layout · module layout ·
+**accuracy and limitations, 14 subsections** · validation and tests · open questions ·
+[§16](../spec.md#16-what-this-spec-decides-that-no-ticket-decided) ·
+[§17](../spec.md#17-corrections-this-spec-carries) · provenance.
+
+### What assembling it turned up
+
+Three findings, all of them **gaps or contradictions between resolved tickets** that only surfaced
+when the tickets were put side by side. They are the reason this was not a pure transcription job.
+
+**1. Two upstream texts were stale, and one was a miscount.** Recorded in the spec's §17 so a
+reader who goes back to a ticket is not misled:
+
+- **`06` decision 5 lists the config-file defaults as `(None, C, F, 60 s)`.** `09` decision 5 made
+  **S** the default time weighting afterwards, so the persisted default in `06` is wrong. The spec
+  says `(None, C, S, 60 s)`.
+- **`08` decision 9 says "five types and eight commands" while its own contract block lists
+  seven.** Seven is right: there is deliberately no `get_settings` (`08` says so itself — the first
+  tick arrives ≤100 ms after the listener registers) and no clear-calibration command (`06` d2
+  makes the offset directly editable). This ticket's own brief inherited the miscount and asked for
+  "the eight commands".
+- **`09`'s ASCII sketch labels its legend `60 / 20`**, a 40 dB span, where `07` decision 9 fixes the
+  window at **60 dB** ≈ 10 → 70 dB SPL. `07` is the parameter decision and wins; the sketch is
+  illustrative.
+
+**2. `09`'s zero-power correction had a second and a third home, and neither ticket found them.**
+`09` corrected `05` decision 11 by treating a zero-power block as a **gap slot** rather than a
+covered one, so a denied microphone reads `0s of 60s`. But the same exact-zero blocks reach two
+other places, and in both the original reasoning fails for the same reason:
+
+- **The instantaneous readout.** `05` d11's `--` rule fires on *no block for 200 ms*. Exact-zero
+  blocks **do** arrive, so the rule never fires, the smoother converges on zero, and
+  `10·log₁₀(0) = −∞` reaches `serde_json` — which `09` explicitly claimed its correction had
+  prevented. So NOW must publish `null` when the smoothed mean square is **not positive**, in
+  addition to the staleness rule.
+- **The spectrogram.** A zero-power slot that still produces a column draws at the bottom of `07`
+  d9's fixed colour window — which is a *very quiet room*, i.e. precisely the "dead stream reads as
+  a peaceful room" failure `07` d11 exists to prevent. So a gap column is a slot with no samples
+  **or** zero total power.
+
+Both are in the spec as derived consequences rather than new choices, but they were not written
+down anywhere before.
+
+**3. Two crates and one normalisation were nobody's decision.** The map's "no decisions left open"
+bar could not be met without them, so the spec makes them and flags them for veto in §16: `realfft`
+for the FFT and `rtrb` for the SPSC queue (`05` d12 requires a bounded lock-free SPSC queue but
+names no crate, and hand-rolling one correctly is not the 15-line job the biquad recursion is), plus
+the **FFT power normalisation** — `07` measured everything through its prototype's own and never
+wrote it down, yet `07` d9's colour window is quoted in dBFS, so the window is meaningless without
+it. The one chosen makes a full-scale sine read −3.01 dBFS in its band, which is **the same dBFS
+convention as the meter**, and that is what lets one calibration offset shift both the numbers and
+the picture.
+
+§16 lists eleven such choices in total; the other eight are mechanical (band assignment rule, the
+tick's thread, channel 0 on multi-channel streams, the `unavailable` label, the config file name).
+
+### What this ticket hands downstream
+
+- **The map is done.** Its destination was "an approved spec + architecture … enough that
+  implementation runs as a separate effort with no decisions left open", and that now exists.
+- **The implementation effort inherits four open questions, none blocking** — spec §15. The one
+  worth doing first is the cheapest: **whether ~6 px per band reads at arm's length in a dim
+  venue**, since the build is already installed on the phone. If the answer is no it is a
+  correction to `07` d3's band count or `07`/`09`'s ~200 px height.
+- **The spike is still in the tree and is now due for deletion.** `11` said to delete it on its own
+  resolution and `CLAUDE.md` says to delete it once the spec is written; both conditions are met.
+  Deliberately **not** done here: removing `App.vue`'s harness means writing what replaces it,
+  which is the first act of implementation rather than the last act of this map. Spec §12 lists
+  exactly what goes and what must survive.

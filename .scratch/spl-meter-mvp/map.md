@@ -27,6 +27,23 @@ inside this map, with one exception: the device spike in
 [Prove native mic capture works in a Tauri iOS app on a physical device](issues/02-ios-capture-device-spike.md),
 which exists only to prove the architecture is viable.
 
+> **✅ Done — 2026-08-05.**
+>
+> **The spec is written and approved: [`spec.md`](spec.md).** Every ticket on this map is
+> resolved, and the destination exists. Implementation runs as a separate effort and should
+> start from the spec, not from this map — the map's value now is the *reasoning* behind each
+> decision, which the spec cites but does not reproduce.
+>
+> Four things the spec deliberately leaves open, none of them blocking: its
+> [§15](spec.md#15-open-questions-this-spec-does-not-close). The cheapest and most useful is
+> **whether ~6 px per band reads at arm's length in a dim venue** — the build is already on the
+> phone.
+>
+> **The capture spike is still in the tree and is now due for deletion** (`spike.rs`,
+> `bin/spike.rs`, the `run_capture_spike` command, `App.vue`'s harness). Left in deliberately:
+> removing the harness means writing what replaces it, which belongs to the implementation
+> effort. Spec [§12](spec.md#12-suggested-module-layout) lists what goes and what must survive.
+
 ## Notes
 
 **Domain:** real-time audio DSP (SPL measurement, IEC frequency weighting, FFT) in a
@@ -212,6 +229,25 @@ mechanics.
   trade is not taken. **This one reached the device** — `ios build` + `devicectl` needs no
   networking, unlike the Safari route that blocked `07`.
 
+- [Write the spec](issues/10-write-the-spec.md)
+  — **[`spec.md`](spec.md) is written and approved, with no notes.** 18 sections, and every decision
+  cites the ticket that made it, so the spec is a destination rather than a replacement for the
+  reasoning. Assembling it was not pure transcription: putting ten resolved tickets side by side
+  surfaced **two stale texts and a miscount** (`06` d5 still lists `F` as the persisted default time
+  weighting, which `09` d5 changed to `S`; `08` d9 says "eight commands" where its own contract block
+  lists seven; `09`'s sketched legend shows a 40 dB span against `07` d9's 60 dB), and it found that
+  **`09`'s zero-power correction had two more homes neither ticket noticed** — exact-zero blocks *do*
+  arrive, so `05` d11's 200 ms staleness rule never fires and `10·log₁₀(0)` would reach `serde_json`
+  after all, and a zero-power spectrogram column draws at the bottom of `07` d9's colour window,
+  which is the "dead stream reads as a peaceful room" failure `07` d11 exists to prevent. Three
+  things were **nobody's decision** and had to be made for the "no decisions left open" bar to mean
+  anything: `realfft`, `rtrb`, and the **FFT power normalisation** — `07` quoted its colour window in
+  dBFS while measuring through a normalisation it never wrote down. The one chosen makes a full-scale
+  sine read −3.01 dBFS in its band, the same convention as the meter, which is what lets one
+  calibration offset shift both the numbers and the picture. All eleven such choices are listed for
+  veto in [§16](spec.md#16-what-this-spec-decides-that-no-ticket-decided) and all twelve carried
+  corrections in [§17](spec.md#17-corrections-this-spec-carries).
+
 ## Requirements discovered while charting the terrain
 
 Not decisions and not fog — things the MVP must do that no ticket asked for, surfaced by probing:
@@ -238,6 +274,11 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
 
 ## Not yet specified
 
+**Everything still open below is carried into the spec's
+[§15](spec.md#15-open-questions-this-spec-does-not-close) and its
+[§13.14](spec.md#1314-untested-and-known-to-be-so), so none of it is lost by the map closing.
+Nothing here blocks implementation.**
+
 - **Desktop dev-loop fidelity** — how to test the meter with reproducible signals when
   the reference meter is at the venue and not on the desk. Probably generated tones or
   pink noise at a known level, but it depends on what the weighting architecture settles.
@@ -251,6 +292,9 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   prototype: **pink noise must draw flat** (it is equal energy per third-octave by definition, so a
   sloped picture means the band summarisation is wrong), and an **exponential sweep must draw a
   straight diagonal** (a curve means the log axis mapping is wrong). Neither needs hardware.
+  **`10` writes the whole thing down as spec [§14](spec.md#14-validation-and-tests)**, DSP half and
+  display half together, so what is left of this entry is only the *acoustic* end — and that is a
+  calibration limitation (spec §13.6) rather than an unspecified piece of the dev loop.
 - ~~**Whether the input path is linear, which decides if a single calibration offset is valid at
   all.**~~ **Answered by measurement, 2026-08-05: it is linear.** Same tone at two source levels
   20 dB apart in `Measurement` mode read **−57.7** and **−37.8 dBFS** — a delta of **19.9 dB against
@@ -269,8 +313,8 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   mode is indicated by the **hero number's own header** — `NOW · C · slow`, both dimensions at once,
   above the number they describe. A bare `MAX 72.4 dB` never arises, because one header governs the
   live number and the max hold together.
-- **Whether the weighting filter validation table becomes a unit test in the repo**, and if
-  so what test runner gets added — the project has none, and `CLAUDE.md` says to ask before
+- ~~**Whether the weighting filter validation table becomes a unit test in the repo**, and if
+  so what test runner gets added~~ — the project has none, and `CLAUDE.md` says to ask before
   adding one. Ticket `03` produced a ready-to-use 34-frequency table, so this is now a
   concrete question rather than a vague one; it needs the implementation effort to exist
   first, so it may belong to that effort rather than this map.
@@ -283,6 +327,13 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   only untested seam that matters is that file — and a renamed field there is a runtime `undefined`
   rather than a build failure, because `vue-tsc` cannot see across the bridge. Accepted deliberately
   on the resist-complexity bar, with `ts-rs` named as the escape if the contract grows.
+  **Closed by `10`: no runner is added at all.** The frontend half is settled the same way `08`
+  narrowed it — nothing so far requires one, so none is added and `src/bridge.ts` stays the single
+  accepted untested seam. Spec [§14](spec.md#14-validation-and-tests) writes the whole test plan
+  instead: the 34-frequency table with its two assertion levels and its two false-failure traps
+  (exact frequencies, not nominal; discard ≥2 s of transient), the two design invariants worth tight
+  tolerances, the metrics-pipeline cases including *every row* of the reset/clear table, and `07`'s
+  two eyeball tests.
 - **Free-provisioning friction** — the 7-day reinstall cycle may become annoying enough
   to need a decision. Signing itself works (`02`), but the expiry has not been hit yet, so the
   re-signing workflow is still unrecorded.
@@ -306,6 +357,9 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   but no verdict has been given. It is the one thing that could still move `07` decision 3's band
   count or its ~200 px height, and `09` decision 6's muted `--` wants the same look. Cheap to answer
   — the build is installed — so it should not become a ticket unless the answer is "no".
+  **`10` names this the first thing the implementation effort should do**, on exactly that
+  cost/benefit: it is the only open question that could still move a settled parameter, and answering
+  it needs nothing built.
 - **A signed macOS build with the `audio-input` entitlement is untested** — research `01`'s
   open risk 8. macOS is dev-only, so low priority, but capture will break silently in a signed
   bundle if the entitlement is wrong. Currently unowned by any ticket.
