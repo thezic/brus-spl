@@ -1,8 +1,16 @@
-//! Throwaway capture spike for ticket `02` — **delete this module once the spec is written.**
+//! Throwaway capture spike for tickets `02` and `11` — **delete when `11` resolves.**
 //!
-//! It exists to prove one thing: that `cpal` plus a hand-configured `AVAudioSession`
-//! actually delivers non-zero PCM on a physical iPhone. It computes a raw RMS and prints
-//! it. No weighting, no calibration, no UI. Do not let it become the meter.
+//! `02` is resolved: this proved that `cpal` plus a hand-configured `AVAudioSession` delivers
+//! non-zero PCM on a physical iPhone, at 48 kHz / mono / f32 / 1024 frames. It computes a raw
+//! RMS and prints it. No weighting, no calibration, no UI. Do not let it become the meter.
+//!
+//! It is now kept alive for ticket `11`'s device probes: interruptions, route changes, and
+//! `Measurement`-mode effect. Those needed three additions — gap detection, mid-run session
+//! polling, and a selectable session mode — because an interruption produces **no error at
+//! all** on released cpal 0.18.1, so missing samples are the only evidence available.
+//!
+//! Everything ticket `11` needs must reach the **on-screen** report: `println!` from Rust does
+//! not show up in `xcrun devicectl … --console`, so stdout is useless on a device.
 //!
 //! The interesting part is not the RMS — it is the diagnostics. Research ticket `01`
 //! identified three failure signatures that look similar on device and have different
@@ -54,9 +62,26 @@ pub struct SpikeReport {
     pub granted_buffer_frames: Option<u32>,
     /// iOS only: read back from `AVAudioSession` after activation.
     pub session: Option<SessionFacts>,
+    /// Whether `AVAudioSessionModeMeasurement` was requested (iOS only). Ticket `11` probe 4
+    /// compares the same steady source with this on and off.
+    pub measurement_mode: bool,
     pub blocks: u64,
     pub frames: u64,
     pub all_zero_blocks: u64,
+    /// Frames we should have received: measured run time × sample rate. The gap between this
+    /// and `frames` is the whole point of ticket `11` — an unannounced gap makes a rolling
+    /// L_eq silently wrong.
+    ///
+    /// There is an inherent floor of roughly one buffer (~21 ms at 1024 frames / 48 kHz):
+    /// whatever the driver had in flight when we tore the stream down is never delivered.
+    /// **Treat anything under ~50 ms as accounting noise, not a gap.** A real interruption
+    /// is seconds.
+    pub expected_frames: u64,
+    /// Stretches where no audio arrived at all.
+    pub gaps: Vec<Gap>,
+    /// iOS only: mid-run changes to the session's reported rate or channel count, e.g. when a
+    /// headset is plugged in. Each entry is `at <seconds>: <what changed>`.
+    pub session_changes: Vec<String>,
     /// Peak absolute sample over the whole run, in dBFS.
     pub peak_dbfs: f32,
     /// RMS over the whole run, in dBFS.
@@ -66,6 +91,18 @@ pub struct SpikeReport {
 }
 
 impl SpikeReport {
+    /// Milliseconds of audio that never arrived. For a rolling L_eq this is the error budget:
+    /// the average silently covers less real time than it claims.
+    pub fn missing_ms(&self) -> f64 {
+        let missing = self.expected_frames.saturating_sub(self.frames);
+        let frames_per_second = self.sample_rate as f64 * self.channels.max(1) as f64;
+        if frames_per_second > 0.0 {
+            missing as f64 / frames_per_second * 1000.0
+        } else {
+            0.0
+        }
+    }
+
     /// The spike's verdict. This is what ticket `02` records on resolution.
     pub fn verdict(&self) -> Verdict {
         if self.blocks == 0 {
@@ -75,6 +112,37 @@ impl SpikeReport {
         } else {
             Verdict::Captured
         }
+    }
+}
+
+/// A stretch during which the audio callback delivered nothing.
+///
+/// Exists because research `01` predicts that on released cpal 0.18.1 an interruption kills the
+/// stream with **no error reaching Rust**, and on `master` it silently resumes. Either way the
+/// only evidence available to us is missing samples, so the spike has to measure their absence.
+#[derive(Debug, Clone, Copy)]
+pub struct Gap {
+    pub start_s: f32,
+    pub end_s: f32,
+    /// Whether audio resumed before the run ended. `false` means the stream stayed dead —
+    /// the predicted outcome of an interruption on 0.18.1.
+    pub recovered: bool,
+}
+
+impl fmt::Display for Gap {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:.2}s → {:.2}s ({:.2}s){}",
+            self.start_s,
+            self.end_s,
+            self.end_s - self.start_s,
+            if self.recovered {
+                ", resumed"
+            } else {
+                ", NEVER RESUMED"
+            }
+        )
     }
 }
 
@@ -257,11 +325,12 @@ fn dbfs(amplitude: f64) -> f32 {
 /// On iOS this configures and activates the `AVAudioSession` first, in the order research
 /// `01` derived from cpal's example plus Apple's docs — cpal does neither, and Apple's
 /// default `SoloAmbient` category permits no input at all.
-pub fn run(duration: Duration) -> Result<SpikeReport, Error> {
-    println!("--- capture spike (ticket 02) ---");
+pub fn run(duration: Duration, measurement_mode: bool) -> Result<SpikeReport, Error> {
+    println!("--- capture spike (tickets 02, 11) ---");
     println!("cpal {CPAL_VERSION}");
+    println!("measurement mode: {measurement_mode}");
 
-    let session = configure_audio_session()?;
+    let session = configure_audio_session(measurement_mode)?;
     if let Some(facts) = session {
         println!(
             "AVAudioSession after activation: sampleRate={} Hz, inputNumberOfChannels={}, IOBufferDuration={:.6} s",
@@ -330,6 +399,10 @@ pub fn run(duration: Duration) -> Result<SpikeReport, Error> {
     println!("capturing for {:.1}s...", duration.as_secs_f32());
 
     let mut errors = Vec::new();
+    let mut gaps: Vec<Gap> = Vec::new();
+    let mut gap_start: Option<f32> = None;
+    let mut session_changes: Vec<String> = Vec::new();
+    let mut last_session = session;
     let mut prev = accum.snapshot();
     let start = Instant::now();
     while start.elapsed() < duration {
@@ -369,9 +442,46 @@ pub fn run(duration: Duration) -> Result<SpikeReport, Error> {
         } else {
             0.0
         };
+        let now = start.elapsed().as_secs_f32();
+
+        // Gap tracking. This is ticket 11's core measurement: an interruption gives us no
+        // error, so silence in the callback is the only evidence there is.
+        if d_blocks == 0 {
+            gap_start.get_or_insert(now);
+        } else if let Some(began) = gap_start.take() {
+            gaps.push(Gap {
+                start_s: began,
+                end_s: now,
+                recovered: true,
+            });
+            println!("!! gap ended: {began:.2}s → {now:.2}s");
+        }
+
+        // Poll the session so a mid-run route change is visible — plugging in a headset can
+        // move the sample rate, and a Bluetooth route can drop it below the ~40 kHz the
+        // weighting filters need (research 03).
+        if let Some(current) = current_session_facts() {
+            if let Some(before) = last_session {
+                if current.sample_rate != before.sample_rate
+                    || current.input_channels != before.input_channels
+                {
+                    let change = format!(
+                        "at {now:.2}s: rate {} → {} Hz, channels {} → {}",
+                        before.sample_rate,
+                        current.sample_rate,
+                        before.input_channels,
+                        current.input_channels
+                    );
+                    println!("!! session changed: {change}");
+                    session_changes.push(change);
+                }
+            }
+            last_session = Some(current);
+        }
+
         println!(
             "[{:5.2}s] rms {:>7.1} dBFS  peak {:>7.1} dBFS  blocks {:<5} frames {:<8}{}",
-            start.elapsed().as_secs_f32(),
+            now,
             dbfs(rms),
             dbfs(snap.interval_peak as f64),
             d_blocks,
@@ -387,6 +497,20 @@ pub fn run(duration: Duration) -> Result<SpikeReport, Error> {
         prev = snap;
     }
 
+    // A gap still open at the end means the stream never came back.
+    if let Some(began) = gap_start {
+        gaps.push(Gap {
+            start_s: began,
+            end_s: start.elapsed().as_secs_f32(),
+            recovered: false,
+        });
+    }
+
+    // Measured before teardown, because the expectation must be based on how long the stream
+    // actually ran, not the duration we asked for. The report loop overshoots by up to one
+    // interval, and using the nominal duration would let that overshoot mask a short gap —
+    // which is precisely what ticket 11 needs to detect.
+    let ran_for = start.elapsed().as_secs_f64();
     drop(stream);
 
     // Run totals, so these are cumulative on purpose.
@@ -397,6 +521,10 @@ pub fn run(duration: Duration) -> Result<SpikeReport, Error> {
         0.0
     };
 
+    // Frames per channel × channels, so the comparison is apples to apples.
+    let expected_frames =
+        (ran_for * config.sample_rate as f64) as u64 * config.channels.max(1) as u64;
+
     let report = SpikeReport {
         device_id,
         sample_format: sample_format.to_string(),
@@ -404,14 +532,31 @@ pub fn run(duration: Duration) -> Result<SpikeReport, Error> {
         channels: config.channels,
         granted_buffer_frames,
         session,
+        measurement_mode,
         blocks: total.blocks,
         frames: total.samples,
         all_zero_blocks: total.all_zero_blocks,
+        expected_frames,
+        gaps,
+        session_changes,
         peak_dbfs: dbfs(total.peak as f64),
         rms_dbfs: dbfs(rms),
         errors,
     };
 
+    println!(
+        "frames {} of {} expected ({} missing = {:.0} ms)",
+        report.frames,
+        report.expected_frames,
+        report.expected_frames.saturating_sub(report.frames),
+        report.missing_ms()
+    );
+    for gap in &report.gaps {
+        println!("!! GAP {gap}");
+    }
+    for change in &report.session_changes {
+        println!("!! SESSION CHANGE {change}");
+    }
     println!("--- verdict: {} ---", report.verdict());
     Ok(report)
 }
@@ -466,12 +611,12 @@ fn build_input_stream(
 /// this in the host `AppDelegate` instead. Apple's default category is `SoloAmbient`,
 /// which permits no input, so skipping this guarantees failure.
 #[cfg(target_os = "ios")]
-fn configure_audio_session() -> Result<Option<SessionFacts>, Error> {
+fn configure_audio_session(measurement_mode: bool) -> Result<Option<SessionFacts>, Error> {
     use block2::RcBlock;
     use objc2::runtime::Bool;
     use objc2_avf_audio::{
         AVAudioSession, AVAudioSessionCategoryOptions, AVAudioSessionCategoryRecord,
-        AVAudioSessionModeMeasurement,
+        AVAudioSessionModeDefault, AVAudioSessionModeMeasurement,
     };
     use std::sync::mpsc;
 
@@ -502,16 +647,23 @@ fn configure_audio_session() -> Result<Option<SessionFacts>, Error> {
                 "AVAudioSessionCategoryRecord unavailable",
             )
         })?;
-        let mode = AVAudioSessionModeMeasurement.ok_or_else(|| {
+        // Ticket 11 probe 4 needs the comparison, so the mode is selectable rather than fixed.
+        // `Default` is the control case: whatever processing Apple applies by default.
+        let (mode, mode_name) = if measurement_mode {
+            (AVAudioSessionModeMeasurement, "Measurement")
+        } else {
+            (AVAudioSessionModeDefault, "Default")
+        };
+        let mode = mode.ok_or_else(|| {
             Error::with_message(
                 ErrorKind::BackendError,
-                "AVAudioSessionModeMeasurement unavailable",
+                format!("AVAudioSessionMode{mode_name} unavailable"),
             )
         })?;
         session
             .setCategory_mode_options_error(category, mode, AVAudioSessionCategoryOptions::empty())
             .map_err(|e| av_err("setCategory:mode:options:", e))?;
-        println!("session category=Record mode=Measurement options=none");
+        println!("session category=Record mode={mode_name} options=none");
 
         session
             .setPreferredSampleRate_error(PREFERRED_SAMPLE_RATE)
@@ -566,6 +718,31 @@ fn configure_audio_session() -> Result<Option<SessionFacts>, Error> {
 /// Non-iOS platforms have no `AVAudioSession`. On macOS the dev loop relies on TCC
 /// prompting for the process; see research `01` §4 and open risk 7.
 #[cfg(not(target_os = "ios"))]
-fn configure_audio_session() -> Result<Option<SessionFacts>, Error> {
+fn configure_audio_session(_measurement_mode: bool) -> Result<Option<SessionFacts>, Error> {
     Ok(None)
+}
+
+/// Re-reads the live session, for polling mid-run. iOS only; `None` elsewhere.
+///
+/// Separate from `configure_audio_session` because a route change can move the sample rate
+/// under a running stream, and the only way to notice is to keep asking.
+#[cfg(target_os = "ios")]
+fn current_session_facts() -> Option<SessionFacts> {
+    use objc2_avf_audio::AVAudioSession;
+
+    // SAFETY: read-only property access on the process-wide singleton, which Apple documents
+    // as thread-safe.
+    unsafe {
+        let session = AVAudioSession::sharedInstance();
+        Some(SessionFacts {
+            sample_rate: session.sampleRate(),
+            input_channels: session.inputNumberOfChannels(),
+            io_buffer_duration: session.IOBufferDuration(),
+        })
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+fn current_session_facts() -> Option<SessionFacts> {
+    None
 }

@@ -1,8 +1,9 @@
 //! Desktop runner for the capture spike (ticket `02`). Throwaway, like the module it calls.
 //!
 //! ```sh
-//! cargo run --bin spike          # 5 seconds
-//! cargo run --bin spike -- 20    # 20 seconds
+//! cargo run --bin spike                # 5 seconds
+//! cargo run --bin spike -- 20          # 20 seconds
+//! cargo run --bin spike -- 20 default  # ...with Measurement mode off (iOS only knob)
 //! ```
 //!
 //! Deliberately not a Tauri app: on the macOS dev loop this proves the cpal path in
@@ -18,8 +19,11 @@ fn main() -> std::process::ExitCode {
         .nth(1)
         .and_then(|a| a.parse::<u64>().ok())
         .unwrap_or(5);
+    // Second argument turns Measurement mode off (ticket 11 probe 4). Has no effect on
+    // desktop, where there is no AVAudioSession to configure.
+    let measurement_mode = std::env::args().nth(2).as_deref() != Some("default");
 
-    match decibel_meter_lib::spike::run(Duration::from_secs(seconds)) {
+    match decibel_meter_lib::spike::run(Duration::from_secs(seconds), measurement_mode) {
         Ok(report) => {
             if report.verdict() == decibel_meter_lib::spike::Verdict::Captured {
                 std::process::ExitCode::SUCCESS

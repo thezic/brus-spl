@@ -8,7 +8,10 @@
 import { ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 
-const seconds = ref(10);
+// 30s by default: ticket 11's probes need time to take a call, invoke Siri, or plug in a
+// headset *while* the run is in progress.
+const seconds = ref(30);
+const measurementMode = ref(true);
 const running = ref(false);
 const output = ref("");
 const failed = ref(false);
@@ -20,6 +23,7 @@ async function runSpike() {
   try {
     output.value = await invoke<string>("run_capture_spike", {
       seconds: seconds.value,
+      measurementMode: measurementMode.value,
     });
   } catch (e) {
     failed.value = true;
@@ -39,8 +43,16 @@ async function runSpike() {
 
     <div class="row">
       <label for="seconds">seconds</label>
-      <input id="seconds" v-model.number="seconds" type="number" min="1" max="120" />
+      <input id="seconds" v-model.number="seconds" type="number" min="1" max="300" />
     </div>
+
+    <label class="row check">
+      <input id="mode" v-model="measurementMode" type="checkbox" />
+      <span>
+        <code>Measurement</code> mode
+        <small>{{ measurementMode ? "(minimal processing)" : "(Default — control case)" }}</small>
+      </span>
+    </label>
 
     <button :disabled="running" @click="runSpike">
       {{ running ? "capturing…" : "Run capture spike" }}
@@ -49,9 +61,10 @@ async function runSpike() {
     <pre v-if="output" :class="{ failed }">{{ output }}</pre>
 
     <p class="hint">
-      Make a steady sound while it runs. Expect a non-zero RMS well above the idle
-      floor. To probe interruptions, take a call or invoke Siri mid-run; to probe
-      route changes, plug in headphones.
+      Ticket 11 probes: take a call or invoke Siri mid-run (interruption); plug in or
+      unplug headphones mid-run (route change); connect Bluetooth and check the granted
+      rate; run the same steady sound with the mode above on and off. Watch
+      <code>gaps</code>, <code>session changes</code> and <code>stream errors</code>.
     </p>
   </main>
 </template>
@@ -92,6 +105,25 @@ h1 {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.check {
+  cursor: pointer;
+}
+
+.check input {
+  /* Sized to be tappable on a phone rather than a default 13px checkbox. */
+  width: 1.4rem;
+  height: 1.4rem;
+  flex: none;
+}
+
+small {
+  opacity: 0.65;
+}
+
+code {
+  font-size: 0.9em;
 }
 
 input {
