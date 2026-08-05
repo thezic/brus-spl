@@ -2,7 +2,7 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: task (HITL — needs Simon at the keyboard for Apple ID signing)
-Status: in progress — desktop half done, device half outstanding
+Status: resolved
 Blocked by: 01
 
 ## Question
@@ -311,30 +311,23 @@ open risks 1–6.
    `xcrun devicectl … --console`.** The capture attempt came back empty while the app was
    demonstrably running. The on-screen report in `App.vue` is the only readable channel, which
    is the reason it renders there. Do not plan device diagnostics around stdout.
-5. **Open risk 2** — re-run with a wired headset and with Bluetooth connected, and record
-   the granted rate each time. Bluetooth SCO commonly forces 8–16 kHz, which would wreck
-   both the FFT bin math and any weighting curve computed for 48 kHz. Decide whether we
-   refuse to measure on Bluetooth routes.
-6. **Open risk 3** — take a real call and invoke Siri mid-run. On pinned 0.18.1 the
-   prediction is the stream dies permanently and no error reaches Rust. Watch for
-   `<< NO AUDIO THIS INTERVAL`. This decides whether we pin cpal to a `master` SHA and
-   whether we need our own interruption observer to keep L_eq honest. Also try
-   backgrounding and the lock screen, which cpal does not model at all.
-7. **Open risk 4** — unplug headphones mid-run and confirm `DeviceChanged` /
-   `StreamInvalidated` reaches the error callback. The spike only logs these; it does not
-   rebuild. Whether a rebuild from a supervisor task actually works is still unproven.
-8. **Open risk 5** — log RMS of a steady source with and without `Measurement` mode, to
-   confirm the mode has a measurable effect and in which direction.
+## Resolution
 
-Everything in 5–8 feeds ticket [`11`](11-interruption-and-gap-handling.md), which is
-blocked on this one.
+**Resolved.** The spike proved what it existed to prove: `01`'s recommendation captures
+non-zero PCM on a physical iPhone, at 48 kHz / mono / f32 / 1024 frames, with no gaps.
 
-**Open question for Simon: can this ticket close now?** Its stated purpose — prove `01`'s
-recommendation captures on a physical device, and record the real rate and buffer size — is
-done. What remains (5–8) is all interruption, route-change and `Measurement`-mode probing,
-which is exactly what ticket `11` is about. Two options: resolve `02` and move 5–8 into `11`
-(unblocking it), or hold `02` open until the probes are run. The first looks cleaner, but it
-changes what `11` is scoped to do, so it is his call, not ours.
+Open risks **1, 6, 7 and 10** are settled (capture, free provisioning, `tauri dev` mic access
+on macOS, plist merge). Open risks **2, 3, 4 and 5** — Bluetooth and wired-headset sample
+rates, interruptions, route-change recovery, and `Measurement`-mode effect — **moved to ticket
+[`11`](11-interruption-and-gap-handling.md)** by Simon's decision, since they are all
+interruption and route-change probing and that is precisely what `11` is about. `11` is
+thereby unblocked. Open risk **8** (signed macOS build with the audio-input entitlement)
+remains unowned; it is macOS-only and low priority, noted in the map's fog.
+
+The spike code stays for now because `11` needs it to run those probes. **Delete it once `11`
+is resolved** — `src-tauri/src/spike.rs`, `src-tauri/src/bin/spike.rs`, the
+`run_capture_spike` command, and `App.vue`'s harness. The permission wiring, framework
+linking and `tauri.conf.json` changes are *not* throwaway and must survive into the real app.
 
 **Workflow constraint discovered, relevant to every remaining device run:** the Wi-Fi network
 here has **client isolation**, so the phone cannot reach the Mac's dev server at all —

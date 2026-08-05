@@ -1,9 +1,9 @@
 # Interruptions and sample gaps: how do they affect measurement validity?
 
 Parent: [SPL Meter MVP](../map.md)
-Type: grilling
-Status: open
-Blocked by: 02
+Type: grilling (+ device probing — HITL, needs Simon and the iPhone)
+Status: open — unblocked, this is the frontier
+Blocked by: —  (was 02, now resolved)
 
 ## Question
 
@@ -51,3 +51,67 @@ Decisions needed:
 
 Depends on `02` because the device spike will show what interruptions actually do on real
 hardware — whether the stream dies, resumes, or returns silence.
+
+---
+
+## Device probes inherited from ticket 02 (2026-08-05)
+
+`02` is resolved: capture works. Its remaining open risks were **moved here** by Simon's
+decision, because they are all interruption and route-change behaviour. **Answer these by
+measurement before deciding anything above** — the decisions listed above hinge on what the
+hardware actually does, and research `01` was explicit that its predictions are inferences
+from reading cpal's source, not observations.
+
+**Baseline to compare against**, from `02` on an iPhone 14 Pro (iOS 26.5.2, cpal **0.18.1**,
+the released version with *no* interruption handling):
+
+| | |
+|---|---|
+| Sample rate | 48 000 Hz (requested and granted) |
+| Channels | 1, f32 |
+| Buffer | 1024 frames (`IOBufferDuration` 0.021333 s) |
+| Block rate | 46.875 /s — 469 blocks in 10.005 s, no gaps |
+| Idle room | rms ≈ −59.6 dBFS, peak ≈ −33.3 dBFS |
+
+### The probes
+
+1. **Route changes and the sample rate floor** (was `01` open risk 2). Re-run with a wired
+   headset, then with a Bluetooth headset, recording the granted rate each time. Bluetooth SCO
+   commonly forces **8–16 kHz**, far below research `03`'s ~40 kHz minimum — at which point the
+   reading is out of tolerance, not merely imprecise. This is the evidence for the
+   refuse-to-measure question above.
+2. **Interruptions** (was open risk 3). Take a real incoming call; invoke Siri; background the
+   app; lock the screen. On 0.18.1 the prediction is the stream **dies permanently with no
+   error reaching Rust**. Watch for `<< NO AUDIO THIS INTERVAL` in the spike output — that
+   marker exists for exactly this. Decides whether we pin cpal to a `master` SHA and whether we
+   need our own `AVAudioSessionInterruptionNotification` observer.
+3. **Route-change recovery** (was open risk 4). Unplug headphones mid-run and confirm
+   `DeviceChanged` / `StreamInvalidated` actually reaches the error callback. The spike only
+   *logs* these — it does not rebuild. Whether a rebuild from a supervisor task works is
+   unproven. Also check whether the input device identity changed, since that invalidates
+   calibration (ticket [`06`](06-calibration-model.md)).
+4. **`Measurement` mode effect** (was open risk 5). Log RMS of the same steady source with and
+   without `AVAudioSessionModeMeasurement`, to confirm the mode has a measurable effect and in
+   which direction. Apple promises only that it disables *some* dynamics processing, so this is
+   the difference between an instrument and a toy — but it cannot be settled by reading.
+
+### How to run them
+
+Two constraints learned in `02`, both of which shape this work:
+
+- **`println!` does not reach `xcrun devicectl … --console`.** The on-screen report in
+  `App.vue` is the only readable channel, so probe results must be read off the phone. Consider
+  whether the spike needs a longer default duration or an on-screen scrollback before starting,
+  since these probes involve doing something to the phone *mid-run* and then reading back.
+- **The Wi-Fi here has client isolation**, so `tauri ios dev` hot reload does not work. Use the
+  embedded-build loop:
+
+  ```bash
+  env -u FORCE_COLOR npx tauri ios build --debug
+  xcrun devicectl device install app --device <udid> \
+    src-tauri/gen/apple/build/arm64/decibel-meter.ipa
+  xcrun devicectl device process launch --device <udid> net.thezic.decibel-meter
+  ```
+
+The spike (`src-tauri/src/spike.rs` and friends) is kept alive for these probes and should be
+**deleted when this ticket resolves**.

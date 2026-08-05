@@ -85,9 +85,11 @@ mechanics.
   with cpal on the rate. Both preferred-value requests were granted exactly, though Apple
   documents them as preferences — keep reading them back. **48 kHz clears research `03`'s
   ~40 kHz filter minimum.** Free provisioning signs without a developer account, and the
-  `Info.plist` merge carries `NSMicrophoneUsageDescription` through. Ticket still open for the
-  interruption / route-change / `Measurement`-mode probes that ticket `11` needs — see its
-  open question about whether those should move to `11`.
+  `Info.plist` merge carries `NSMicrophoneUsageDescription` through. The interruption /
+  route-change / `Measurement`-mode probes moved to ticket `11`, which is now unblocked.
+  Also worth carrying forward: the iOS target must link `AVFAudio`, `AudioToolbox` and
+  `CoreAudio` explicitly via `bundle.iOS.frameworks` — invisible to `cargo check`, since
+  nothing links until Xcode does.
 - [IEC 61672 A/C weighting filters: definitions and validation](issues/03-iec-weighting-filters.md)
   — **Build, don't adopt: cascaded biquads (3 sections for A, 2 for C), f64 throughout,
   DF2T, coefficients computed at runtime from the actual sample rate, no prewarping.** The
@@ -111,7 +113,15 @@ mechanics.
   concrete question rather than a vague one; it needs the implementation effort to exist
   first, so it may belong to that effort rather than this map.
 - **Free-provisioning friction** — the 7-day reinstall cycle may become annoying enough
-  to need a decision. Only surfaces once `02` is done.
+  to need a decision. Signing itself works (`02`), but the expiry has not been hit yet, so the
+  re-signing workflow is still unrecorded.
+- **Dev-loop networking on an isolated Wi-Fi** — `tauri ios dev` hot reload cannot reach the
+  phone on this network (client isolation), so device work uses an embedded `ios build` plus
+  `devicectl install`. Tolerable for probing; worth revisiting if iteration on device becomes
+  frequent during implementation.
+- **A signed macOS build with the `audio-input` entitlement is untested** — research `01`'s
+  open risk 8. macOS is dev-only, so low priority, but capture will break silently in a signed
+  bundle if the entitlement is wrong. Currently unowned by any ticket.
 - ~~**Whether `CLAUDE.md`'s note on `src-tauri/gen/` needs correcting.**~~ **Done** — it was
   just an edit, not a decision. `CLAUDE.md` now distinguishes `gen/schemas` (off-limits)
   from `gen/apple/` (tracked and editable) and records the "keep `gen/apple/` regenerable"

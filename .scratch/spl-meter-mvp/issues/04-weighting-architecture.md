@@ -2,8 +2,15 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: grilling
-Status: open
-Blocked by: 01, 02, 03
+Status: open — unblocked, on the frontier
+Blocked by: 01, 02, 03  (all resolved)
+
+**Hard numbers now available from `02`, measured on the device rather than assumed:**
+**48 000 Hz, mono, f32, 1024-frame buffer** (`IOBufferDuration` 0.021333 s), block rate
+46.875/s. So FFT sizing, bin resolution and biquad coefficients can be argued concretely.
+Note 48 kHz clears research `03`'s ~40 kHz minimum — but a Bluetooth route may drop it to
+8–16 kHz, which ticket [`11`](11-interruption-and-gap-handling.md) is probing; the answer here
+should not assume 48 kHz is guaranteed for all routes.
 
 ## Question
 
