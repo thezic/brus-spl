@@ -3,7 +3,7 @@
 Parent: [SPL Meter MVP](../map.md)
 Type: task
 Status: open
-Blocked by: 08, 09  (01, 02, 03, 04, 05, 06, 07, 11 now resolved)
+Blocked by: 09  (01, 02, 03, 04, 05, 06, 07, 08, 11 now resolved)
 
 ## Question
 
@@ -52,6 +52,32 @@ survive backgrounding), and that the L_eq display carries **window coverage** al
   number, and the spec should tell the reader to keep one. (c) **`AVAudioSessionModeMeasurement` is a
   precondition, not a refinement** — 21 dB of processing gain without it, so a stored offset means
   nothing if the mode is not fixed. The mode is read back and a mismatch logged, with nothing in the UI.
+
+**Inherited from ticket [`08`](08-rust-frontend-boundary.md) — the Rust↔frontend contract, plus
+three things to state and one table worth reproducing.**
+
+- **Reproduce the wire contract verbatim** — the `tick` event's payload and the eight commands.
+  Notable properties to state rather than leave for a reader to infer: every dB value crossing the
+  bridge is **already calibrated** (`05` decision 13), the frontend holds **no authoritative state at
+  all** (settings and the unit ride in every tick), the tick is a **timer** so it publishes with no
+  audio at all, and each column carries an **absolute slot index** so a gap is an index jump rather
+  than a marker.
+- **Reset does not clear the spectrogram**, only the window and the max hold. State the reason or it
+  reads as a bug: 60 s of rumble stripe is unrecoverable while the number refills honestly, and `07`
+  decision 7 had already made the picture a different quantity from the number. The consequence to
+  write down plainly: shortly after a Reset the number describes this talk and the picture describes
+  the last 60 s of the room. Both are labelled; neither is wrong.
+- **The input state is the one place the app speaks up.** `08` decision 8 crosses
+  `capturing` | `denied` | `unavailable`, because a denied microphone otherwise reads as `--` beside
+  `0s of 60s` forever. State the distinction that keeps this inside the no-warnings rule: it fires on
+  a **permanent condition fixable only outside the app**, never on a measurement. And note the
+  desktop caveat — per `CLAUDE.md`, `tauri dev` gets microphone access via the responsible parent
+  process, so macOS may report `capturing` where iOS reports `denied`.
+- **Reproduce `08`'s re-pull table**; one row is counter-intuitive enough to be worth the space.
+  Calibrating changes every number on screen and **no pixel** of the picture, because `07` decision 9
+  shifts the colour window by the offset and the band values shift with it. Only the legend relabels.
+- **`05`'s reset/clear table gains a fourth column and it is entirely empty** — nothing clears the
+  spectrogram's column ring. Worth stating precisely because it is all dashes.
 
 **Inherited from ticket [`07`](07-spectrogram-form.md) — the spectrogram's parameters, and one thing
 it must not be read as claiming.**

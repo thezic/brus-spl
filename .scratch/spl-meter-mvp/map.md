@@ -176,12 +176,35 @@ mechanics.
   payload evaporates: 32 band levels, ≈1.3 kB/s, not 4 096 bins.** Variant C (calm, no chrome) failed its
   own bet and that was the useful result — with no hue the rumble and the speech merged into one haze.
 
+- [Rust ↔ frontend boundary: what crosses, how often, in what shape](issues/08-rust-frontend-boundary.md)
+  — **One 10 Hz event carrying everything the screen paints, one command returning the picture's
+  history, and a frontend that holds no authoritative state at all.** Reading the vendored Tauri
+  source dissolved the ticket's central question: `emit` and `Channel::send` are the *same*
+  transport — both `eval` a JS string with the JSON inlined — so events-versus-channels is about
+  lifecycle, not speed, and a binary format would be a **pessimisation** (raw bytes under 1 kB are
+  turned into a JSON number array anyway). Events also need no capability entry, so `CLAUDE.md`'s
+  four-step ceremony never applies. The tick is ≈460 bytes, ~17× under Tauri's own fast-path
+  threshold. One decision is required for *correctness* rather than robustness: columns carry
+  **absolute slot indices** and each tick ships every real column since the last publish, because
+  `05`'s clock-advanced ring means a late tick has more than one completed slot behind it — and gaps
+  then need no marker, since a missing index *is* `07` decision 11's hole. Rust owns a 1200-column
+  ring so every canvas invalidation is one move, *pull again*. Settings and the unit ride in **every**
+  tick, which extends `05` decision 13's footgun-denial from values to labels. Two findings the
+  grilling surfaced that no ticket owned: **Reset must not clear the picture** (unrecoverable beats
+  mildly inconsistent — a correction to `07` decision 8's *phrasing*), and a **denied microphone had
+  no way to say so**, which adds a three-value `input` state — the one place the app speaks up, and
+  still not a warning.
+
 ## Requirements discovered while charting the terrain
 
 Not decisions and not fog — things the MVP must do that no ticket asked for, surfaced by probing:
 
 - **Disable the idle timer.** From `11`. Without it a long talk outlives the screen and
   measurement dies silently.
+  **`08` settled where it lives and found it is free:** Rust sets it once at startup and nothing
+  about it crosses the bridge. Per `CLAUDE.md`, Tauri's hardcoded iOS framework list already covers
+  UIKit, so `objc2-ui-kit` needs **no `bundle.iOS.frameworks` entry and no `tauri ios init`
+  regeneration** — unlike `02`'s AVFAudio/AudioToolbox/CoreAudio.
 - ~~**The rolling L_eq must track coverage, not just energy.**~~ **Discharged by `05`**, and in a
   stronger form than `11` asked for: coverage is not a flag bolted onto the ring but a consequence of
   advancing it by the clock, so it reports missing data from causes we never detect.
@@ -239,6 +262,11 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   *need* that table as a test, and it is a pure Rust test — `cargo test` plus a `#[cfg(test)]`
   module adds no dependency, no config and no tooling decision, so there is nothing to ask
   about. Only the frontend testing question remains, and nothing so far requires it.
+  **`08` narrows the frontend half to one file.** Decision 9 hand-writes the bridge types in
+  `src/bridge.ts` with identical snake_case names on both sides rather than generating them, so the
+  only untested seam that matters is that file — and a renamed field there is a runtime `undefined`
+  rather than a build failure, because `vue-tsc` cannot see across the bridge. Accepted deliberately
+  on the resist-complexity bar, with `ts-rs` named as the escape if the contract grows.
 - **Free-provisioning friction** — the 7-day reinstall cycle may become annoying enough
   to need a decision. Signing itself works (`02`), but the expiry has not been hit yet, so the
   re-signing workflow is still unrecorded.

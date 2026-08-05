@@ -3,7 +3,35 @@
 Parent: [SPL Meter MVP](../map.md)
 Type: prototype
 Status: open — unblocked, on the frontier
-Blocked by: —  (07 now resolved, and 05 before it)
+Blocked by: —  (07 and 08 now resolved, and 05 before them)
+
+**Inherited from ticket [`08`](08-rust-frontend-boundary.md) — one new thing to design, and two
+obligations taken away.**
+
+- **New: an input-state line.** `08` decision 8 puts a three-value `input` field
+  (`capturing` | `denied` | `unavailable`) in every tick, because a denied microphone otherwise
+  renders as `--` beside `0s of 60s` forever with nothing saying why — and it is the one failure the
+  user can fix, from outside the app. It must read as a **state label in the family of `dBFS`**, not
+  as a warning banner: `06` decision 4's precedent, not a reversal of `11`/`05`'s no-warnings rule.
+  For `denied` it should say something actionable (Settings ▸ Privacy); for `unavailable` there is
+  nothing to act on, and detail lives in the log.
+- **Removed: the layout holds no state.** `08` decision 7 puts the four settings *and* the unit in
+  every tick, and `08` decision 4 keeps the spectrogram's history in Rust. So the frontend renders
+  the last tick and caches nothing authoritative — no settings copy that can disagree with what is
+  running, no column ring of its own. Text entry keeps local draft state; that is an input buffer,
+  not state.
+- **When to re-pull the picture:** `get_spectrogram()` on mount, on a canvas resize or orientation
+  change, and on a window-length change. **Not after calibration** — `07` decision 9 shifts the
+  colour window by the offset and the band values shift with it, so calibrating changes every number
+  on screen and no pixel of the picture. Only the legend relabels.
+- **Picker feedback comes from the command return value**, not the next tick. Every settings command
+  returns the new settings, so a tap updates immediately instead of waiting up to 100 ms. If the
+  controls feel sticky, that is the path to check.
+- **Reset does not clear the spectrogram** (`08` decision 5). Three seconds after a Reset the number
+  reads `3s of 60s` while the picture still shows the previous talk's applause — deliberate, because
+  60 s of rumble stripe is unrecoverable and the number refills honestly. Both axes are labelled, so
+  the layout's job is to make sure they *look* like two axes: the coverage figure belongs with the
+  number, the `−60s … now` axis with the picture.
 
 **Inherited from ticket [`07`](07-spectrogram-form.md) — the spectrogram arrives with a geometry
 rather than as an unknown shape, and it brings one obligation.**
