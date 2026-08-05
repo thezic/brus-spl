@@ -125,6 +125,22 @@ mechanics.
   calibration with the filters out of the way. DF2T is **hand-rolled**, no `biquad` crate. And `04`
   **declines** research `03`'s sub-40 kHz guard, closing a contradiction with `11` decision 5:
   a log line, nothing in the UI.
+- [Level metrics pipeline: rolling L_eq, instantaneous level, max hold](issues/05-level-metrics-pipeline.md)
+  — **A ring of 100 ms energy slots advanced by the monotonic clock, not by arriving samples — which
+  makes gap accounting a consequence of timekeeping rather than a feature.** The L_eq averages
+  **real data only**, so the first 60 s after launch and a 27 s hole are the same case, both read
+  `33s of 60s`; probe 2 in `11` showed why a sample-driven ring would instead have reported full
+  coverage over a dead stream. The ring is allocated at the longest window so the length setting
+  (10/30/60/120 s, default 60) is a **re-slice, not a reset**. Instantaneous level is exponentially
+  time-weighted with **F/S selectable** (Simon's call, against the recommendation), and max hold is
+  the maximum *of that* — L_CFmax, compared at block rate — which means **two** settings now change
+  what the max means, so both must clear it. One Reset button clears max hold *and* window ("start
+  measuring this talk", so a talk isn't judged through the previous one's applause). Where the design
+  refuses to guess: `--` after 200 ms of no audio rather than decaying to a fake silence, and a
+  queue overflow degrades into lost coverage rather than a wrong number. The calibration offset lands
+  **post-log in Rust**, which makes `06`'s matching gesture interactive — nudge it and the settled
+  60 s average moves with no reset. Also **corrects `04`** twice: the max hold clears on a weighting
+  change too, and "mark the transition as gap slots" is now zero code.
 
 ## Requirements discovered while charting the terrain
 
@@ -132,8 +148,9 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
 
 - **Disable the idle timer.** From `11`. Without it a long talk outlives the screen and
   measurement dies silently.
-- **The rolling L_eq must track coverage, not just energy.** From `11`'s gap decision — the ring
-  buffer has to know which slots hold real data. Belongs to ticket `05`.
+- ~~**The rolling L_eq must track coverage, not just energy.**~~ **Discharged by `05`**, and in a
+  stronger form than `11` asked for: coverage is not a flag bolted onto the ring but a consequence of
+  advancing it by the clock, so it reports missing data from causes we never detect.
 - **`AVAudioSessionModeMeasurement` is mandatory**, not preferred. From `11`: 21 dB of processing
   gain without it, very likely level-dependent, which would make the single-offset calibration
   model meaningless. Belongs to tickets `06` and `10`.
@@ -163,6 +180,9 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
   added). That rules out "show both at once", and `04` decision 2 depends on it — only the
   selected chain runs. What is left for the layout work is narrow: how the *active* mode is
   indicated on the main screen.
+  **Widened slightly by `05`:** there are now **two** dimensions to indicate, not one — weighting
+  (C/A/Z) *and* time weighting (F/S), because `05` ties the meaning of max hold to both. A bare
+  `MAX 72.4 dB` is unreadable. Still ticket `09`'s work, just with one more thing to show.
 - **Whether the weighting filter validation table becomes a unit test in the repo**, and if
   so what test runner gets added — the project has none, and `CLAUDE.md` says to ask before
   adding one. Ticket `03` produced a ready-to-use 34-frequency table, so this is now a

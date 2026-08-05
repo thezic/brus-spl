@@ -33,6 +33,29 @@ does nothing at runtime, so the spec is the *only* place the honesty lives:
 Also record that measurement is **foreground-only with the idle timer disabled** (capture does not
 survive backgrounding), and that the L_eq display carries **window coverage** alongside the level.
 
+**Inherited from ticket [`05`](05-level-metrics-pipeline.md).**
+
+- **There are four settings, not three:** weighting (C/A/Z), **time weighting (F/S)** — `05`
+  decision 7 made it selectable, against the recommendation — window length (10/30/60/120 s, default
+  60), and the calibration offset. All four are Rust-owned and all four persist.
+- **Reproduce `05`'s reset/clear table verbatim.** Three pieces of state (window, max hold, filter
+  state) against six events, and several rows read as bugs if unexplained — notably that an F/S
+  change clears the max hold but not the window, that a rate change clears neither, and that
+  changing the calibration offset clears nothing at all.
+- **Coverage is shown always, not only when degraded.** `33s of 60s`, and `60s of 60s` when full. A
+  figure that appears only when something is wrong is a warning, which charting ruled out; always-on
+  is what makes the number trustworthy. Worth stating as a deliberate choice.
+- **The L_eq averages real data only**, so the displayed number means "the L_eq of the seconds I
+  actually have" and coverage is what qualifies it. State this — the alternative (folding gaps in as
+  silence) would read low by 2.6 dB for a 27 s hole in a 60 s window, and a reader who assumes it is
+  the one being done will misread every gapped measurement.
+- **Two states where the app deliberately shows nothing:** the instantaneous readout after 200 ms
+  with no audio, and the L_eq at zero coverage. Both are the instrument reporting its own state,
+  which is the same principle as `11` decision 3.
+- **One limitation to add to the accuracy section:** there is no coverage floor, so
+  `68.2 dB · 1s of 60s` will display — honest, but it is a one-second average wearing a
+  sixty-second label, and only the coverage figure says so.
+
 **Inherited from ticket [`04`](04-weighting-architecture.md).**
 
 - **There are three weighting modes, not two.** dB(C) default, dB(A), and **dB(Z)** — chosen on a

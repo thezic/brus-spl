@@ -2,8 +2,35 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: grilling
-Status: open
-Blocked by: 05
+Status: open — unblocked, on the frontier
+Blocked by: —  (was 05, now resolved)
+
+**Inherited from ticket [`05`](05-level-metrics-pipeline.md) — the meter half of this boundary is
+now fully specified, so only the spectrogram is left to design.**
+
+Per 10 Hz display tick, the meter payload is exactly:
+
+- **three `Option<f64>`** — rolling L_eq, instantaneous level, max hold. `None` means the display
+  shows `--`, and it is a real state rather than an error: the instantaneous readout publishes
+  `None` after 200 ms with no audio block, and the L_eq publishes `None` at zero coverage where it
+  is arithmetically undefined (`05` decision 11).
+- **coverage in seconds**, and the window length in seconds — `33s of 60s`. Published **always**,
+  not only when degraded; a figure that appears only when something is wrong is a warning, which
+  charting ruled out.
+
+Two constraints on the design:
+
+- **Every dB value crossing the bridge is already calibrated** (`05` decision 13 applies the offset
+  post-log in Rust). Deliberate, so that an uncalibrated number cannot be rendered by mistake. Do
+  not move the offset to the frontend for convenience.
+- **All four settings are Rust-owned** — weighting (C/A/Z), time weighting (F/S), window length, and
+  the calibration offset. The frontend issues commands; it holds no authoritative state. `04` had
+  already implied this for the weighting; `05` decisions 7 and 13 extend it to the rest, and `05`'s
+  reset/clear table is the reason — several settings clear DSP state, which only Rust can do.
+
+Also: the 10 Hz tick is the *meter's* cadence, not a global one. `05` decision 12 explicitly leaves
+the spectrogram free to run at its own rate, and the internal DSP tick cannot go below 10 Hz for
+reasons unrelated to display.
 
 **Inherited from ticket [`04`](04-weighting-architecture.md).** The traffic is now known to be
 lopsided in exactly the way this ticket's last paragraph guessed: `04` chose two pipelines, so the

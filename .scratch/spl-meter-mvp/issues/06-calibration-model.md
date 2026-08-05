@@ -2,8 +2,27 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: grilling
-Status: open
-Blocked by: 05
+Status: open — unblocked, on the frontier
+Blocked by: —  (was 05, now resolved)
+
+**Inherited from ticket [`05`](05-level-metrics-pipeline.md) — the matching gesture is now
+interactive, and this ticket owns more settings than it thought.**
+
+- **The offset is applied post-log, in Rust, to each published dB value** (`05` decision 13).
+  Chosen partly for this ticket: as a pre-squaring gain, every nudge of the offset would invalidate
+  the accumulated window and force a refill before the next comparison against the reference meter.
+  Post-log, `10·log₁₀(Σp²/n) + c` is the identical number and `max(xᵢ + c) = max(xᵢ) + c`, so
+  **nothing resets** — nudge the offset and the settled 60 s average and the historical maximum both
+  move instantly. Design the gesture around that; it is a live adjustment, not a wait-and-see loop.
+- **A 10 s window length exists partly for this** (`05` decision 6). Selectable lengths are
+  10/30/60/120 s, and the 10 s option was kept specifically because matching a reference meter wants
+  a number steadier than the instantaneous readout but settling in seconds.
+- **Persistence now covers four settings, not one:** the calibration offset, the weighting mode
+  (C/A/Z), the time weighting (F/S — `05` decision 7 made it selectable), and the window length. All
+  four are **Rust-owned** state; the frontend issues commands rather than holding them (`05`
+  decision 13, and see ticket [`08`](08-rust-frontend-boundary.md)).
+- **Z mode reads through the same post-log offset**, so the bypass path really does exercise the
+  whole calibration chain end-to-end, which is what `04` decision 6 promised it would be good for.
 
 **Inherited from ticket [`11`](11-interruption-and-gap-handling.md) — two constraints, and one
 open question that may undermine the whole model.**

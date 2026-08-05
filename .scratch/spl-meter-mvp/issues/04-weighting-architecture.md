@@ -121,6 +121,11 @@ doesn't arise is exactly what the map's "resist complexity" rule forbids.
 So one biquad chain, one energy accumulator, one window. On a weighting change the chain is
 rebuilt, its state zeroed, and the window restarts from empty (`2s of 60s`, refilling).
 
+**Corrected by ticket [`05`](05-level-metrics-pipeline.md) decision 8: the max hold clears too.**
+This decision addressed only the window. L_CFmax and L_AFmax are no more comparable than LCeq and
+LAeq, so the same incommensurability argument applies to the maximum, and honouring it costs one
+scalar.
+
 Convenient side effect: the filter's settling transient is buried. The f₁ double pole settles
 slowly (τ ≈ 7.7 ms, but 0.001 dB settling takes far longer — research `03` P5 discards ≥2 s in
 tests), so the first fraction of a second after a rebuild reads low. Since the window is
@@ -183,6 +188,12 @@ switched off.
   line, since 1 kHz is the calibration anchor).
 - **On a mid-session rate change: recompute coefficients and zero the filter state, but do *not*
   reset the window.** Mark the transition as gap slots instead, per ticket `11` decision 3.
+  **Reopened and re-confirmed by ticket [`05`](05-level-metrics-pipeline.md) decision 4** — Simon
+  pushed on the deliberateness of a route change; the rate turns out to be the wrong trigger for
+  "the microphone changed", the right one reopens `11` decision 6, and the prize is at most one
+  window length of stale energy. **And "mark the transition as gap slots" is now zero code:** `05`
+  decision 2 advances the ring by the monotonic clock, so a rebuild that delivers no samples
+  produces gap slots by construction.
   The asymmetry with decision 2 above is principled: a **weighting** change makes previously
   accumulated energy *incommensurable* (LCeq and LAeq are different quantities and cannot be
   averaged together), whereas a **rate** change keeps measuring the same quantity through a
