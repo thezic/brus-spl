@@ -130,7 +130,47 @@ difference matter (spec §7).
 
 <!-- one line per resolved ticket: gist + link -->
 
-_None yet — charted 2026-08-05._
+- [The weighting filters and their 34-row test](issues/b02-the-weighting-filters-and-their-test.md)
+  — **Built and green: 590 filtered tone measurements across four sample rates, tight to 1e-6 dB at
+  48 kHz.** Spec §5.3 needed no correction — section table, bilinear recipe, cascade order and the
+  digital 1 kHz renormalisation all produced the promised numbers first time, and `03` §2.4's
+  coefficient fixtures agree to 1.7e-13 dB. What did not survive was the **test specification**, in
+  three places, and all three are the kind that produce a confusing red rather than an obviously
+  wrong one. **`±0.01 dB below 4 kHz` is contradicted by the table it ships with** — the 3150 Hz row
+  publishes −0.019 dB at 44.1 kHz, so the tolerance is now ±0.01 dB *around the predicted bilinear
+  deviation*, identical below 2.5 kHz and rate-general. **The `f_H` = 7943.282 Hz invariant is
+  analogue-only** — the digital filter reads −3.66 dB there at 44.1 kHz, so it splits into a 1e-9
+  assertion on the module constants (which is what actually catches a transposed `f₁`/`f₄`) and an
+  end-to-end one against the warped prediction; `f_L` is unaffected and reads −3.010 flat at all four
+  rates. And a **fourth trap nobody named**: `sin²` averaged over a partial cycle is biased by
+  **0.035 dB at 10 Hz**, three times the tolerance and indistinguishable from a low-frequency filter
+  error, so the measurement window is nudged to whole half-cycles. Also confirmed independently:
+  **16 kHz cannot hold the design band above ~4 kHz** (C is out by 59.9 dB at 7943 Hz), which is
+  `03` §2.5's ~39 kHz bisection arrived at from the other direction. The table is doing work — a
+  deliberate mutation of one pole sum fails **10 of the 21 tests**. Two of the assertions are weak
+  and say so: `|H(1 kHz)| = 0` and clause 5.4.14 both survive a corrupted section, because they test
+  the renormalisation rather than the filter.
+
+- [Session, capture and the idle timer](issues/b01-session-capture-and-the-idle-timer.md)
+  — **Built and verified everywhere the hardware allowed; still `claimed`, because it never ran on the
+  phone.** The spike is deleted whole and `cargo build` produces one binary. **The framework-link
+  canary passed** — `tauri ios build --debug` reached `BUILD SUCCEEDED` with zero `Undefined symbols`,
+  which is the one thing no `cargo check` could ever have told us, and it now covers `objc2-ui-kit`
+  too: the idle timer needed **no `bundle.iOS.frameworks` entry and no regeneration**, asserted by
+  building rather than by reading. `FORCE_COLOR` was in fact `3` in the shell, so the map's warning
+  was live rather than theoretical. On macOS the readout measures **46.875 blocks/s = 48000/1024
+  exactly**, −43…−52 dBFS quiet against −18.8 dBFS on speech. The queue is **47 slots computed from
+  the granted rate**, ~10× headroom against the 4–5 blocks a 100 ms tick drains. Two calls the spec
+  did not make: the **permission request is kept** and moved to its own thread (its completion block
+  arrives on the main queue, so inlining it in Tauri's `setup` deadlocks the app), and a **denial does
+  not abort capture** — the stream is built, delivers exact zeros, §6.3 discards them, and the meter
+  lands on the designed `--` / `0s of 60s` instead of a `Failed` state that would misread as §9.4's
+  `unavailable`. Non-`f32` input is refused rather than converted in the callback, which §3.3 forbids
+  there. Nothing in spec §16 was vetoed — `rtrb` degrades into lost coverage exactly as §6.10 wants,
+  and §16.9's channel-0 rule cost one `chunks_exact` and never fired on the mono route.
+  **Outstanding: `devicectl install` + `launch`.** The paired iPhone 14 Pro reports `unavailable`, so
+  the remaining risk is launch-time rather than link-time — which is
+  [the Tier 1 device pass](issues/b08-tier-1-device-pass.md)'s to close anyway.
 
 ## Not yet specified
 
