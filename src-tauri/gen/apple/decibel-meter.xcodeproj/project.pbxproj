@@ -1,0 +1,477 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		027AFDEA03342624528966E3 /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 3E5742202C1C4EBB703853D2 /* assets */; };
+		060711E6DEA08C64CDBEEE16 /* MetalKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9A96681BE60779DEB88D922B /* MetalKit.framework */; };
+		598E8965453E659EF34C3A9A /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = C39E2AF9413262CDE2FC3E4B /* QuartzCore.framework */; };
+		5ACB7904D38E38D5965BF862 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CEDC905854ADA770FCCC25E9 /* Metal.framework */; };
+		A7AACE4B195D651B407FD587 /* libapp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 13804A67CC1404CCEE9A7627 /* libapp.a */; };
+		AB7D04708ADFDB3BFE4130B2 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = AF9407CEC58092AE1B235DCA /* main.mm */; };
+		AC7FF42CD581B69EF61D7C8F /* WebKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7F88B34FB6D8698AD23929BB /* WebKit.framework */; };
+		BD1D02C50594F21AC2C67B31 /* Security.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 36A4DCB407742313A851845F /* Security.framework */; };
+		C3FF436447D30FBE9C356199 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = ADCC37EC4058CFA9E04DE4D6 /* Assets.xcassets */; };
+		D6EFB6A631C4C23DD621CF2F /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0F53583F25415CEEB3B32350 /* CoreGraphics.framework */; };
+		D7A533E0446E79B92E206FDF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 130B894AF7A7BB72DD7DBB5E /* LaunchScreen.storyboard */; };
+		ECF8CB3D2F41B4B9E2134CD2 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3E758CBB4DE22E9EA874C4E1 /* UIKit.framework */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		0F53583F25415CEEB3B32350 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		130B894AF7A7BB72DD7DBB5E /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
+		13804A67CC1404CCEE9A7627 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
+		15CDB4F2BF2CF3BA75E5CA3E /* spike.rs */ = {isa = PBXFileReference; path = spike.rs; sourceTree = "<group>"; };
+		167A66107B3988E6FA5E3D8D /* decibel-meter_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "decibel-meter_iOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		36A4DCB407742313A851845F /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
+		3E5742202C1C4EBB703853D2 /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
+		3E758CBB4DE22E9EA874C4E1 /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
+		783AF841FF6CC12DDC81F5F1 /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		7F88B34FB6D8698AD23929BB /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
+		924B9506D6B383AE30E6AE67 /* spike.rs */ = {isa = PBXFileReference; path = spike.rs; sourceTree = "<group>"; };
+		9A96681BE60779DEB88D922B /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
+		ADCC37EC4058CFA9E04DE4D6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AF9407CEC58092AE1B235DCA /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
+		C39E2AF9413262CDE2FC3E4B /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		C72E61F991D2993AF9B823B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		CEDC905854ADA770FCCC25E9 /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
+		D02499722ABB3FD2051061EC /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		D578CE0C8F2AF9FA6AAAD026 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
+		F3003526ACFD1352CF2EBC0E /* decibel-meter_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "decibel-meter_iOS.entitlements"; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		57D10E0068DC51DD45C9FD74 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7AACE4B195D651B407FD587 /* libapp.a in Frameworks */,
+				D6EFB6A631C4C23DD621CF2F /* CoreGraphics.framework in Frameworks */,
+				5ACB7904D38E38D5965BF862 /* Metal.framework in Frameworks */,
+				060711E6DEA08C64CDBEEE16 /* MetalKit.framework in Frameworks */,
+				598E8965453E659EF34C3A9A /* QuartzCore.framework in Frameworks */,
+				BD1D02C50594F21AC2C67B31 /* Security.framework in Frameworks */,
+				ECF8CB3D2F41B4B9E2134CD2 /* UIKit.framework in Frameworks */,
+				AC7FF42CD581B69EF61D7C8F /* WebKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		02545F08A568553EFBCD8F1D /* src */ = {
+			isa = PBXGroup;
+			children = (
+				783AF841FF6CC12DDC81F5F1 /* lib.rs */,
+				D02499722ABB3FD2051061EC /* main.rs */,
+				924B9506D6B383AE30E6AE67 /* spike.rs */,
+				E0F5BBA1AC142570924D8A32 /* bin */,
+			);
+			name = src;
+			path = ../../src;
+			sourceTree = "<group>";
+		};
+		1B9034FA88F821C53AFC1A16 /* decibel-meter */ = {
+			isa = PBXGroup;
+			children = (
+				AF9407CEC58092AE1B235DCA /* main.mm */,
+				306E8D1A3D15E8C2611A0182 /* bindings */,
+			);
+			path = "decibel-meter";
+			sourceTree = "<group>";
+		};
+		306E8D1A3D15E8C2611A0182 /* bindings */ = {
+			isa = PBXGroup;
+			children = (
+				D578CE0C8F2AF9FA6AAAD026 /* bindings.h */,
+			);
+			path = bindings;
+			sourceTree = "<group>";
+		};
+		326404E975EE36D721A42005 = {
+			isa = PBXGroup;
+			children = (
+				3E5742202C1C4EBB703853D2 /* assets */,
+				ADCC37EC4058CFA9E04DE4D6 /* Assets.xcassets */,
+				130B894AF7A7BB72DD7DBB5E /* LaunchScreen.storyboard */,
+				DEE533CE72946B72224DC32B /* decibel-meter_iOS */,
+				9696FC39EFA9C431C1E8603E /* Externals */,
+				784B01CEF0FA598015B1D4EC /* Sources */,
+				02545F08A568553EFBCD8F1D /* src */,
+				90D47DB80EC178631D8E8722 /* Frameworks */,
+				A88CEAB6B4AA4B30C205D158 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		784B01CEF0FA598015B1D4EC /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				1B9034FA88F821C53AFC1A16 /* decibel-meter */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		90D47DB80EC178631D8E8722 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				0F53583F25415CEEB3B32350 /* CoreGraphics.framework */,
+				13804A67CC1404CCEE9A7627 /* libapp.a */,
+				CEDC905854ADA770FCCC25E9 /* Metal.framework */,
+				9A96681BE60779DEB88D922B /* MetalKit.framework */,
+				C39E2AF9413262CDE2FC3E4B /* QuartzCore.framework */,
+				36A4DCB407742313A851845F /* Security.framework */,
+				3E758CBB4DE22E9EA874C4E1 /* UIKit.framework */,
+				7F88B34FB6D8698AD23929BB /* WebKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		9696FC39EFA9C431C1E8603E /* Externals */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			path = Externals;
+			sourceTree = "<group>";
+		};
+		A88CEAB6B4AA4B30C205D158 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				167A66107B3988E6FA5E3D8D /* decibel-meter_iOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		DEE533CE72946B72224DC32B /* decibel-meter_iOS */ = {
+			isa = PBXGroup;
+			children = (
+				F3003526ACFD1352CF2EBC0E /* decibel-meter_iOS.entitlements */,
+				C72E61F991D2993AF9B823B3 /* Info.plist */,
+			);
+			path = "decibel-meter_iOS";
+			sourceTree = "<group>";
+		};
+		E0F5BBA1AC142570924D8A32 /* bin */ = {
+			isa = PBXGroup;
+			children = (
+				15CDB4F2BF2CF3BA75E5CA3E /* spike.rs */,
+			);
+			path = bin;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0326D7CAFE70B4DE787505B6 /* decibel-meter_iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0E6FF616D12B87FCB5E1FEBB /* Build configuration list for PBXNativeTarget "decibel-meter_iOS" */;
+			buildPhases = (
+				FD261853EBA6C203AF3556B3 /* Build Rust Code */,
+				750D2685211805485311D5AD /* Sources */,
+				CAFA322BFF67A316F605B4FE /* Resources */,
+				57D10E0068DC51DD45C9FD74 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "decibel-meter_iOS";
+			packageProductDependencies = (
+			);
+			productName = "decibel-meter_iOS";
+			productReference = 167A66107B3988E6FA5E3D8D /* decibel-meter_iOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CEE3F9CCE6F82FAD5685228D /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0326D7CAFE70B4DE787505B6 = {
+						DevelopmentTeam = QV7UX8JMYX;
+					};
+				};
+			};
+			buildConfigurationList = 4DD8E839B665A6D12E7B9192 /* Build configuration list for PBXProject "decibel-meter" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 326404E975EE36D721A42005;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = A88CEAB6B4AA4B30C205D158 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0326D7CAFE70B4DE787505B6 /* decibel-meter_iOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CAFA322BFF67A316F605B4FE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C3FF436447D30FBE9C356199 /* Assets.xcassets in Resources */,
+				D7A533E0446E79B92E206FDF /* LaunchScreen.storyboard in Resources */,
+				027AFDEA03342624528966E3 /* assets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		FD261853EBA6C203AF3556B3 /* Build Rust Code */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build Rust Code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/Externals/x86_64/${CONFIGURATION}/libapp.a",
+				"$(SRCROOT)/Externals/arm64/${CONFIGURATION}/libapp.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "npm run -- tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} 3 ${ARCHS:?}";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		750D2685211805485311D5AD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB7D04708ADFDB3BFE4130B2 /* main.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		4BD983EA7930B2D3604B8B14 /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = release;
+		};
+		670A03FB06B1C4C2C6FFA7FC /* release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "decibel-meter_iOS/decibel-meter_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = QV7UX8JMYX;
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "decibel-meter_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "net.thezic.decibel-meter";
+				PRODUCT_NAME = "decibel-meter";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = release;
+		};
+		7AD83E695309406FE3A5E0C3 /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
+				ARCHS = (
+					arm64,
+				);
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = "decibel-meter_iOS/decibel-meter_iOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = QV7UX8JMYX;
+				ENABLE_BITCODE = NO;
+				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\".\"",
+				);
+				INFOPLIST_FILE = "decibel-meter_iOS/Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift/$(PLATFORM_NAME) $(DEVELOPER_DIR)/Toolchains/XcodeDefault.xctoolchain/usr/lib/swift-5.0/$(PLATFORM_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "net.thezic.decibel-meter";
+				PRODUCT_NAME = "decibel-meter";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALID_ARCHS = arm64;
+			};
+			name = debug;
+		};
+		B37B7A6F1F23B0FCED9F480C /* debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0E6FF616D12B87FCB5E1FEBB /* Build configuration list for PBXNativeTarget "decibel-meter_iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7AD83E695309406FE3A5E0C3 /* debug */,
+				670A03FB06B1C4C2C6FFA7FC /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+		4DD8E839B665A6D12E7B9192 /* Build configuration list for PBXProject "decibel-meter" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				B37B7A6F1F23B0FCED9F480C /* debug */,
+				4BD983EA7930B2D3604B8B14 /* release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CEE3F9CCE6F82FAD5685228D /* Project object */;
+}

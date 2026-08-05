@@ -155,26 +155,47 @@ open risks 1–6.
    two are indistinguishable by format. This machine also carries two Congenial Data AB
    identities, and both existing provisioning profiles belong to that org — so the wrong ID
    is easy to pick up by accident.
-2. `npm run tauri ios init`, then `npm run tauri ios dev`. Then
-   `./scripts/check-ios-plist.sh`. **Open risk 6 is still open**: a Personal Team satisfies
-   Tauri's requirement on paper, but free provisioning actually deploying to the device is
-   unproven, and profiles expire after 7 days — record the re-signing workflow.
-3. Tap **Run capture spike**. The verdict line is the answer to open risk 1. The
+2. ✅ **`npm run tauri ios init` done** — `src-tauri/gen/apple/` generated and committed,
+   with `DEVELOPMENT_TEAM: QV7UX8JMYX` in `project.yml` and `project.pbxproj`.
+
+   **Needed `brew install cocoapods` first.** `ios init` looks for a CocoaPods *brew keg*,
+   and when it doesn't find one falls back to `gem install`, which fails: it demands `sudo`,
+   and the only `gem` on this machine is macOS system Ruby **2.6.10** installing into
+   `/Library/Ruby/Gems`. Sudo would not have rescued it — current CocoaPods needs Ruby ≥ 3.1,
+   so the gem path is a dead end regardless. Homebrew is the fix (and what Tauri probes for);
+   it brings its own Ruby and needs no sudo since `/opt/homebrew` is user-writable.
+
+   Also confirmed empirically: **`ios init` does not merge the plist**, exactly as research
+   `01` §3b found. The generated `Info.plist` holds only the XcodeGen template keys and has
+   no `NSMicrophoneUsageDescription`. `./scripts/check-ios-plist.sh` correctly exits 1 on
+   this. The merge runs on `ios dev`/`build`/`run` — **so re-run the check after the first
+   build, not now.**
+
+   The generated `decibel-meter_iOS.entitlements` is an empty dict, which is correct: the
+   `audio-input` entitlement is a macOS Hardened Runtime concern. iOS microphone access is
+   gated purely by the purpose string plus TCC.
+
+3. `npm run tauri ios dev` (or `ios build`) — **first step that needs the device and
+   signing.** Then `./scripts/check-ios-plist.sh` to confirm the merge landed.
+   **Open risk 6 is still open**: a Personal Team satisfies Tauri's requirement on paper,
+   but free provisioning actually deploying to the device is unproven, and profiles expire
+   after 7 days — record the re-signing workflow.
+4. Tap **Run capture spike**. The verdict line is the answer to open risk 1. The
    `AVAudioSession` block reports the granted sample rate, channel count, and buffer
    duration — **those are the numbers later tickets need**, not what we asked for.
-4. **Open risk 2** — re-run with a wired headset and with Bluetooth connected, and record
+5. **Open risk 2** — re-run with a wired headset and with Bluetooth connected, and record
    the granted rate each time. Bluetooth SCO commonly forces 8–16 kHz, which would wreck
    both the FFT bin math and any weighting curve computed for 48 kHz. Decide whether we
    refuse to measure on Bluetooth routes.
-5. **Open risk 3** — take a real call and invoke Siri mid-run. On pinned 0.18.1 the
+6. **Open risk 3** — take a real call and invoke Siri mid-run. On pinned 0.18.1 the
    prediction is the stream dies permanently and no error reaches Rust. Watch for
    `<< NO AUDIO THIS INTERVAL`. This decides whether we pin cpal to a `master` SHA and
    whether we need our own interruption observer to keep L_eq honest. Also try
    backgrounding and the lock screen, which cpal does not model at all.
-6. **Open risk 4** — unplug headphones mid-run and confirm `DeviceChanged` /
+7. **Open risk 4** — unplug headphones mid-run and confirm `DeviceChanged` /
    `StreamInvalidated` reaches the error callback. The spike only logs these; it does not
    rebuild. Whether a rebuild from a supervisor task actually works is still unproven.
-7. **Open risk 5** — log RMS of a steady source with and without `Measurement` mode, to
+8. **Open risk 5** — log RMS of a steady source with and without `Measurement` mode, to
    confirm the mode has a measurable effect and in which direction.
 
 Everything in 4–7 feeds ticket [`11`](11-interruption-and-gap-handling.md), which is
