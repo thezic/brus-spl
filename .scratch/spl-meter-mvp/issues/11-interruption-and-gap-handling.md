@@ -169,15 +169,23 @@ If it does not, calibration needs rethinking before the spec is written.
 
 #### Probes 1 and 3 — route changes: **not run, no headphones available.**
 
-Still open, and both need hardware:
+Neither now gates a decision, because decisions 5 and 6 chose to do nothing about route
+behaviour. Reclassified rather than left hanging:
 
-- **Probe 1 (Bluetooth / wired rate).** The concern stands on research `03`'s ~40 kHz floor
-  regardless of measurement; what is unmeasured is what rate this device actually grants on
-  those routes. The *policy* decision can be made without it.
-- **Probe 3 (route-change recovery).** Whether `DeviceChanged` / `StreamInvalidated` actually
-  reaches the error callback, and whether a rebuild from a supervisor task works, is unproven.
-  Note probe 2 showed the error callback stayed silent for an interruption, which weakens any
-  assumption that route changes will announce themselves either.
+- **Probe 1 (Bluetooth / wired rate) — dropped.** It existed to inform the refuse-or-flag
+  policy, and that policy is now "measure normally". Knowing the exact rate a Bluetooth route
+  grants would change nothing we build. The DSP reads the actual rate at runtime regardless.
+- **Probe 3 (route-change recovery) — deferred to implementation, still worth doing.** Whether
+  `DeviceChanged` / `StreamInvalidated` reaches the error callback, and whether a rebuild works,
+  is unproven and *does* still matter: not for calibration, but because a route change may kill
+  the stream the way an interruption did, and measurement has to survive it. Note probe 2 showed
+  the error callback silent for an interruption, so do not assume route changes announce
+  themselves either.
+
+  The mitigation is already decided and does not depend on this probe: the interruption observer
+  plus the `inputNumberOfChannels == 0` health check will catch a dead stream whatever killed it,
+  and recovery is the same code path. So this is verification of a chosen design, not an input to
+  it — do it with headphones to hand during implementation.
 
 ### Decisions (2026-08-05, with Simon)
 
@@ -227,6 +235,18 @@ UI.
 indication. Accepted deliberately. Note the tension with decision 3, which exists precisely to
 avoid silently-wrong numbers — the difference is that a gap happens *to* you unbidden, whereas a
 Bluetooth mic route is something you would have to go out of your way to create.
+
+**6. A route change does not invalidate the calibration.** No detection, no staleness indicator.
+Simon's call, on the same reasoning as decision 5 and consistent with the map's "one device, one
+offset" scope: plugging in a headset mic is a deliberate act, not something that happens to you.
+
+**Residual risk, and it is the largest one on this ticket:** built-in and headset microphones
+differ in sensitivity by potentially **tens of dB** — far more than the sample-rate error
+accepted in decision 5 — and the reading would be wrong with nothing to suggest it. Accepted
+deliberately. This belongs in the spec's stated limitations (ticket
+[`10`](10-write-the-spec.md)) alongside the broadband-offset and phone-mic caveats, and it
+constrains ticket [`06`](06-calibration-model.md): the calibration procedure should say plainly
+that the offset is only valid for the input in use when it was set.
 
 ### How to run them
 
