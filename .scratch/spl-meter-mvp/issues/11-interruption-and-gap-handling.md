@@ -95,6 +95,90 @@ the released version with *no* interruption handling):
    which direction. Apple promises only that it disables *some* dynamics processing, so this is
    the difference between an instrument and a toy — but it cannot be settled by reading.
 
+### Probe results (2026-08-05, iPhone 14 Pro, iOS 26.5.2, cpal 0.18.1)
+
+#### Probe 2 — interruption (Siri): stream dies permanently, silently. **Confirmed.**
+
+```
+blocks: 141   all-zero blocks: 0
+frames: 144384 of 1440054 expected    missing: 1295670 frames = 26993 ms
+GAPS (1):  3.26s → 30.00s (26.74s), NEVER RESUMED
+SESSION CHANGES (1):  at 3.26s: rate 48000 → 48000 Hz, channels 1 → 0
+stream errors: none
+```
+
+Research `01` §1c predicted this and was right on every point:
+
+- **The stream never resumed.** 3.0 s of audio, then nothing for the remaining 27 s.
+- **No error reached Rust.** `stream errors: none` — the error callback was never called.
+  Doing nothing is therefore not an option; a rolling L_eq would have averaged 60 s of window
+  over 3 s of data and shown a plausible, wrong number.
+- **It stopped rather than returning silence.** `all-zero blocks: 0`, so this is distinct from
+  the permission-denied signature.
+
+**New finding not in research `01`: `inputNumberOfChannels` went 1 → 0 and stayed there.** The
+sample rate was unchanged. This means the session was left **deactivated** — cpal 0.18.1 has no
+interruption handling at all, so nothing ever calls `setActive(true)` again. Two consequences:
+
+1. There *is* a pollable signal for "input is gone", independent of the notification: the
+   session reporting zero input channels. Useful as a backstop, or as a cheap health check.
+2. Recovery requires re-activating the session ourselves, not merely rebuilding the cpal
+   stream. A rebuild against a deactivated session would fail with the
+   `InvalidInput: channel count must be at least 1` signature from research `01` §1d — the same
+   error as a never-set category, which will be confusing if we don't expect it.
+
+#### Probe 2b — backgrounding / lock screen: **the app does not survive it.**
+
+Reported as "crashed (shut down) after capture finished". Not characterised further: it is not
+yet known whether iOS suspended and then terminated the app, or whether something in our own
+code faulted on return to the foreground. Either way, **capture does not survive
+backgrounding**, which cpal does not model at all (research `01` §1e item 4).
+
+This raises a scope question that was never discussed while charting — see the decisions below.
+
+#### Probe 4 — `Measurement` mode: **21 dB effect. It is mandatory.**
+
+Same 440 Hz sine source, same run length:
+
+| Session mode | RMS |
+|---|---|
+| `Measurement` | **−51.7 dBFS** |
+| `Default` | **−30.6 dBFS** |
+
+**A 21.1 dB difference.** Apple only promises that `Measurement` "disables *some* dynamics
+processing", which understates it considerably on this hardware: `Default` is applying roughly
+21 dB of processing gain to the input.
+
+**The important part is not the 21 dB, it is linearity.** A single stored broadband calibration
+offset (ticket [`06`](06-calibration-model.md)) is only valid if the input path is linear —
+gain that varies with level cannot be corrected by a constant. Processing that large is very
+likely level-dependent (AGC-like), which would make `Default` mode structurally uncalibratable
+rather than merely offset. So `Measurement` mode is not a refinement, it is a precondition for
+the calibration model to mean anything.
+
+Caveats worth stating: this is **one measurement pair, not a controlled sweep**, and the source
+level was not independently verified between runs. The conclusion "the mode has a large
+measurable effect, in the direction of less gain" is solid; the exact 21.1 dB is not a constant
+to rely on.
+
+**Follow-up probe worth running, and it needs no extra hardware** — it tests linearity, which
+is what ticket `06` actually depends on: play the same sine at two known source levels a
+documented distance apart (e.g. generator at −20 dBFS then −40 dBFS) in `Measurement` mode, and
+check the measured RMS delta matches the source delta. If it does, a fixed offset is defensible.
+If it does not, calibration needs rethinking before the spec is written.
+
+#### Probes 1 and 3 — route changes: **not run, no headphones available.**
+
+Still open, and both need hardware:
+
+- **Probe 1 (Bluetooth / wired rate).** The concern stands on research `03`'s ~40 kHz floor
+  regardless of measurement; what is unmeasured is what rate this device actually grants on
+  those routes. The *policy* decision can be made without it.
+- **Probe 3 (route-change recovery).** Whether `DeviceChanged` / `StreamInvalidated` actually
+  reaches the error callback, and whether a rebuild from a supervisor task works, is unproven.
+  Note probe 2 showed the error callback stayed silent for an interruption, which weakens any
+  assumption that route changes will announce themselves either.
+
 ### How to run them
 
 Two constraints learned in `02`, both of which shape this work:
