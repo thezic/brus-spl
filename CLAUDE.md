@@ -37,6 +37,19 @@ That last one matters: the `AVAudioSession` setup is behind `cfg(target_os = "io
 
 Typechecking the frontend happens only via `npm run build`; there is no standalone typecheck script.
 
+**Never run `tauri ios init` with `FORCE_COLOR` set in the environment.** Use
+`env -u FORCE_COLOR npx tauri ios init`. Tauri's generated "Build Rust Code" script phase
+ends with `... --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}`, where Tauri
+intends `FORCE_COLOR` to hold its own `--force-color` *flag*. npm and many agent/CI shells
+set the same variable name to a colour *level number* instead. XcodeGen substitutes
+environment variables when it writes `project.pbxproj`, so a `FORCE_COLOR=3` in the
+generating shell bakes a literal `3` into the script, which cargo-mobile2 then parses as an
+architecture and fails with the misleading `Arch specified by Xcode was invalid. {arch}
+isn't a known arch` (note the unsubstituted `{arch}` — a Tauri formatting bug, so the
+message never names the offending value). The same applies at *build* time: `ios dev` and
+`ios build` should also be run with it unset. Check with `echo $FORCE_COLOR` before
+regenerating; recover with `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx tauri ios init`.
+
 **`@tauri-apps/cli` is pinned to an exact version, not `^2`.** The iOS `Info.plist` merge order is undocumented and changed silently between tauri-cli 2.4 and 2.9, and a missing `NSMicrophoneUsageDescription` is a launch-time process kill rather than a build error. After bumping it — or after any `tauri ios build` — run `./scripts/check-ios-plist.sh` to assert the key survived the merge.
 
 ## Architecture

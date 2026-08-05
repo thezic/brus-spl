@@ -211,6 +211,24 @@ open risks 1–6.
    microphone through the purpose string plus TCC instead — so it *should* be irrelevant.
    Worth revisiting only if permission behaves oddly on device.
 
+   **The build then failed, and the cause was self-inflicted.**
+   `Arch specified by Xcode was invalid. {arch} isn't a known arch`, from the "Build Rust
+   Code" script phase. The generated script ends
+   `... --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}`, where Tauri intends
+   `FORCE_COLOR` to carry its own `--force-color` *flag*. Agent and npm shells set the same
+   variable name to a colour *level number*. XcodeGen substitutes environment variables when
+   writing `project.pbxproj`, so `FORCE_COLOR=3` in the shell that ran `ios init` baked a
+   literal `3` into the script; cargo-mobile2 read it as an architecture and rejected it.
+
+   The error names neither `FORCE_COLOR` nor the bad value — `{arch}` is an unsubstituted
+   Rust format placeholder, a Tauri bug — so it is worth knowing by sight. Diagnosed by
+   reading the materialised script in `DerivedData/.../Script-*.sh`, which is where the
+   stray `3` is visible; `project.yml` still shows the innocent `${FORCE_COLOR}`.
+
+   Fixed by `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx tauri ios init`. Recorded
+   in `CLAUDE.md`, since it recurs on every regeneration and applies to `ios dev`/`build`
+   too, not just `init`.
+
 4. **Run the spike on the device — the actual open question.** Tap **Run capture spike**.
    The verdict line is the answer to open risk 1. The
    `AVAudioSession` block reports the granted sample rate, channel count, and buffer
