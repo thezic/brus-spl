@@ -35,7 +35,8 @@
       "entitlements": "./Entitlements.plist"
     },
     "iOS": {
-      "developmentTeam": "QV7UX8JMYX"
+      "developmentTeam": "QV7UX8JMYX",
+      "frameworks": ["AVFAudio", "AudioToolbox", "CoreAudio"]
     }
   }
 }

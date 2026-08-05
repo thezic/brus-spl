@@ -229,6 +229,28 @@ open risks 1–6.
    in `CLAUDE.md`, since it recurs on every regeneration and applies to `ios dev`/`build`
    too, not just `init`.
 
+   **Then it failed at the link step** — `Undefined symbols for architecture arm64`, naming
+   `_AVAudioSessionCategoryRecord`, `_AVAudioSessionModeMeasurement`,
+   `_AudioComponentFindNext`, `_AudioUnitRender` and friends, from both our
+   `configure_audio_session` and cpal's `session_event_manager`.
+
+   Cause: the Rust code builds as a **staticlib** (`libapp.a`) and *Xcode* performs the final
+   link, so the `#[link(name = "AVFAudio", kind = "framework")]` attributes inside
+   `objc2-avf-audio`, `objc2-audio-toolbox` and `objc2-core-audio` never reach it. Tauri's
+   generated `project.yml` hardcodes only CoreGraphics, Metal, MetalKit, QuartzCore,
+   Security, UIKit and WebKit — nothing audio, since Tauri cannot know we use it.
+
+   Fixed by adding `"frameworks": ["AVFAudio", "AudioToolbox", "CoreAudio"]` to
+   `bundle.iOS` in `tauri.conf.json`, then regenerating (framework changes require re-init).
+   Verified all three now appear as `- sdk: ….framework` in `project.yml` and in
+   `project.pbxproj`.
+
+   **Worth noting for research `01`:** its permission-wiring steps do not mention framework
+   linking, and neither does the recommendation. It is invisible to `cargo check` — including
+   `cargo check --target aarch64-apple-ios`, which passed throughout — because nothing links
+   until Xcode does. Any future crate that pulls in a new Apple framework will need the same
+   treatment.
+
 4. **Run the spike on the device — the actual open question.** Tap **Run capture spike**.
    The verdict line is the answer to open risk 1. The
    `AVAudioSession` block reports the granted sample rate, channel count, and buffer

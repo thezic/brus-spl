@@ -37,6 +37,17 @@ That last one matters: the `AVAudioSession` setup is behind `cfg(target_os = "io
 
 Typechecking the frontend happens only via `npm run build`; there is no standalone typecheck script.
 
+**The iOS target must link `AVFAudio`, `AudioToolbox` and `CoreAudio` explicitly.** They are
+listed in `bundle.iOS.frameworks` in `tauri.conf.json`. Rust builds as a staticlib
+(`libapp.a`) and Xcode does the final link, so the `#[link(name = "…", kind = "framework")]`
+attributes in `objc2-avf-audio`, `objc2-audio-toolbox` and `objc2-core-audio` never reach
+that link step — Tauri's own hardcoded framework list covers only UIKit/WebKit/Metal and
+friends. Without them the build fails at `Ld` with `Undefined symbols for architecture
+arm64` naming `_AVAudioSessionCategoryRecord`, `_AudioComponentFindNext` and similar. Note
+this compiles and `cargo check`s perfectly happily; only the Xcode link catches it.
+**Changing `frameworks` requires regenerating the project** —
+`rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx tauri ios init`.
+
 **Never run `tauri ios init` with `FORCE_COLOR` set in the environment.** Use
 `env -u FORCE_COLOR npx tauri ios init`. Tauri's generated "Build Rust Code" script phase
 ends with `... --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}`, where Tauri
