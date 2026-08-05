@@ -32,6 +32,27 @@ Also: the 10 Hz tick is the *meter's* cadence, not a global one. `05` decision 1
 the spectrogram free to run at its own rate, and the internal DSP tick cannot go below 10 Hz for
 reasons unrelated to display.
 
+**Inherited from ticket [`06`](06-calibration-model.md) — three additions, one of which means the
+meter payload is no longer the only meter traffic.**
+
+- **A second level reading, for the calibration view.** `06` decision 3 computes the offset against a
+  **fixed 10 s slice of the ring**, independent of the display's window setting, so the calibration
+  surface needs that value *and its coverage* alongside the main L_eq. It is only needed while that
+  view is open, so whether it rides the same tick payload, a separate event, or a pull command is
+  this ticket's call — but the design has to have somewhere for it.
+- **An uncalibrated flag.** `06` decision 4 models the offset as `Option<f64>`, and with `None` the
+  frontend labels the numbers **`dBFS`** instead of `dB` — a correctly-named different quantity rather
+  than a wrong SPL. So the state has to cross the bridge; the frontend cannot infer it from the
+  values.
+- **Two commands:** set-calibration-from-reference (taking the value typed off the proper meter, which
+  Rust bounds-checks to ~0–140 dB before deriving the offset) and set-offset-directly (for retyping a
+  written-down offset after a reinstall). Both are settings commands in the same family as the other
+  four, and both write through to disk immediately.
+
+Note `06` decision 5 also settles the storage side: **one JSON file written from Rust** via
+`app_config_dir()`, no plugin and no capability entry, which keeps the frontend out of persistence
+entirely. Whatever this ticket designs, the frontend should never be the thing that remembers.
+
 **Inherited from ticket [`04`](04-weighting-architecture.md).** The traffic is now known to be
 lopsided in exactly the way this ticket's last paragraph guessed: `04` chose two pipelines, so the
 meter crosses as **a scalar plus window coverage per display frame** — trivial — and **FFT

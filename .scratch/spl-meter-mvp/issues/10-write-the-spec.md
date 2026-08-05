@@ -33,6 +33,26 @@ does nothing at runtime, so the spec is the *only* place the honesty lives:
 Also record that measurement is **foreground-only with the idle timer disabled** (capture does not
 survive backgrounding), and that the L_eq display carries **window coverage** alongside the level.
 
+**Inherited from ticket [`06`](06-calibration-model.md).**
+
+- **Reproduce `06`'s six-step procedure verbatim.** Set dB(C), both instruments on the same steady
+  sound, let the 10 s slice fill, type the reference reading, trim ±0.1 dB, **write the offset down**.
+  The "steady sound" requirement is load-bearing rather than advisory: the reference meter's quantity
+  is unknown, and only a non-changing sound makes the two comparable.
+- **One offset serves all three weighting modes**, because it converts dBFS → dB SPL, a property of the
+  microphone rather than of the weighting. Worth stating so per-mode calibration doesn't look like an
+  omission.
+- **Uncalibrated is a designed state, not an error.** The offset is `Option<f64>` and the app shows raw
+  values labelled `dBFS` until it is set. State why: a shipped default would be an authoritative-looking
+  number wrong by an unknown amount, and blanking the meter would hide that capture works.
+- **Three limitations to add.** (a) **The offset is only as good as the reference meter** — a class-2
+  instrument is ±1.5 dB and the offset inherits that wholesale, while the display shows 0.1 dB; the
+  precision of the display is not the accuracy of the reading. (b) **Free provisioning reinstalls can
+  lose the stored offset**, which is why the app displays it — the recovery path is a written-down
+  number, and the spec should tell the reader to keep one. (c) **`AVAudioSessionModeMeasurement` is a
+  precondition, not a refinement** — 21 dB of processing gain without it, so a stored offset means
+  nothing if the mode is not fixed. The mode is read back and a mismatch logged, with nothing in the UI.
+
 **Inherited from ticket [`05`](05-level-metrics-pipeline.md).**
 
 - **There are four settings, not three:** weighting (C/A/Z), **time weighting (F/S)** — `05`

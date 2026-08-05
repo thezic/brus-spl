@@ -142,6 +142,23 @@ mechanics.
   60 s average moves with no reset. Also **corrects `04`** twice: the max hold clears on a weighting
   change too, and "mark the transition as gap slots" is now zero code.
 
+- [Calibration model, procedure, and persistence](issues/06-calibration-model.md)
+  — **One offset for all three modes, set by typing what the proper meter reads while the app sums a
+  fixed 10 s slice of the ring.** The offset converts dBFS → dB SPL, which is a property of the
+  *microphone*, not the weighting — and keeping it single is what preserves Z's diagnostic value, since
+  per-mode offsets would force Z and C to agree. Scale established: it is on the order of **+100 dB**,
+  which by itself rules out a nudge-only gesture. **Uncalibrated is a real state, not a zero:** the
+  offset is `Option<f64>` and the numbers show as **`dBFS`** until it is set — a correctly-named
+  different quantity rather than a fabricated default, which would have been an authoritative-looking
+  number wrong by an unknown amount. The 10 s match slice is **free**, a direct payoff from `05`
+  decision 5 making window length a re-slice, so the main 60 s meter is never disturbed. Persistence is
+  **one JSON file written from Rust** — `serde_json` is already a dependency and `app_config_dir()`
+  needs no plugin, npm package or capability entry — written through on change, because probe 2b showed
+  the app can die without running shutdown code. **No metadata:** the offset goes stale with a hardware
+  change, not with time, so a date would point at the wrong variable while detecting nothing. And the
+  offset is **displayed for writing down**, because free provisioning's weekly reinstall can take the
+  data container with it.
+
 ## Requirements discovered while charting the terrain
 
 Not decisions and not fog — things the MVP must do that no ticket asked for, surfaced by probing:
@@ -154,6 +171,10 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
 - **`AVAudioSessionModeMeasurement` is mandatory**, not preferred. From `11`: 21 dB of processing
   gain without it, very likely level-dependent, which would make the single-offset calibration
   model meaningless. Belongs to tickets `06` and `10`.
+  **Discharged by `06`**, and the "very likely level-dependent" worry was retired by measurement — the
+  21 dB is a **fixed gain**. `06` also adds a new requirement of the same shape: **read the session mode
+  back and log a mismatch**, on the reasoning `01`/`02` applied to the sample rate. If `Measurement`
+  ever silently fails to apply, the stored offset is wrong by ~21 dB. A log line, nothing in the UI.
 - **The iOS target must link `AVFAudio`, `AudioToolbox` and `CoreAudio`** via
   `bundle.iOS.frameworks`. From `02`. Invisible to `cargo check`, since nothing links until Xcode
   does.
@@ -200,6 +221,11 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
 - **Free-provisioning friction** — the 7-day reinstall cycle may become annoying enough
   to need a decision. Signing itself works (`02`), but the expiry has not been hit yet, so the
   re-signing workflow is still unrecorded.
+  **`06` found a consequence worth knowing before that happens:** the reinstall can take the app's data
+  container with it, and with it the calibration offset. Installing over the top usually preserves it,
+  but delete-then-install does not, nor does regenerating the Xcode project. Mitigated rather than
+  solved — the offset is displayed so it can be written down and retyped in seconds. Still worth
+  recording what actually survives when the expiry is first hit.
 - **Dev-loop networking on an isolated Wi-Fi** — `tauri ios dev` hot reload cannot reach the
   phone on this network (client isolation), so device work uses an embedded `ios build` plus
   `devicectl install`. Tolerable for probing; worth revisiting if iteration on device becomes

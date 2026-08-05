@@ -28,6 +28,32 @@ Also useful: **display resolution is this ticket's readability lever.** `05` dec
 once a second on its own. Choosing resolution is how the numbers are made calm — not by slowing the
 data.
 
+**Inherited from ticket [`06`](06-calibration-model.md) — a calibration surface this ticket did not
+know it owned, plus one change to the main screen.**
+
+The calibration surface needs four things, and the list is short because `06` deliberately kept the
+gesture to numeric entry:
+
+- **Numeric entry for the reference value** — you type what the proper meter reads and the app derives
+  the offset. This is the primary gesture, done standing next to the reference meter, so it wants to be
+  quick to reach and hard to fumble.
+- **The live 10 s reading with its coverage**, which is what the typed value is matched against (`06`
+  decision 3). It settles in 10 s and it is *not* the main display's window, so it is a distinct number
+  on this surface.
+- **±0.1 dB trim buttons**, for splitting the difference while watching both instruments.
+- **The offset shown as a number.** Not decoration: free provisioning means the app is reinstalled
+  weekly, and if the data container is ever lost, a written-down offset is the difference between a
+  retype and a trip back to the venue (`06` decision 2).
+
+And on the main screen: **the unit label switches between `dBFS` and `dB`.** `06` decision 4 makes
+uncalibrated a real state — offset `Option<f64>`, `None` meaning never calibrated — and the honest
+presentation is to label the raw values as the different quantity they are rather than blank them or
+fake an SPL. So the layout needs both labels to look deliberate, not just the calibrated one.
+
+Where the calibration surface *lives* is still this ticket's call — the layout question already lists
+"inline on the one screen, or behind a sheet", and calibration is now the strongest case for a sheet:
+it is a rare, deliberate, two-instrument gesture, unlike anything else on the screen.
+
 ## Question
 
 One screen has to hold: rolling L_eq (the number judged against 70), instantaneous level,
