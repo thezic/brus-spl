@@ -179,6 +179,55 @@ Still open, and both need hardware:
   Note probe 2 showed the error callback stayed silent for an interruption, which weakens any
   assumption that route changes will announce themselves either.
 
+### Decisions (2026-08-05, with Simon)
+
+**1. Stay on released cpal 0.18.1 and handle interruptions ourselves.** Not a git pin of
+`master`. The probe makes this clear-cut: `master`'s auto-resume is *silent*, so gap accounting
+is needed either way; we already own session setup, so an observer is an extension rather than
+new machinery; and pinning a SHA is ongoing maintenance for something we would still have to
+wrap.
+
+**2. Observe `AVAudioSessionInterruptionNotification` ourselves.** Forced, not chosen — cpal
+never surfaces interruptions, as `stream errors: none` proves.
+
+Recovery must **re-activate the session** (`setActive(true)`), not merely rebuild the cpal
+stream: probe 2 showed the session left deactivated with `inputNumberOfChannels == 0`. A rebuild
+against a deactivated session fails with `InvalidInput: channel count must be at least 1` — the
+*same* error as a never-set category (research `01` §1d). Expect it, or it will look like a
+regression in the setup code. `inputNumberOfChannels == 0` also works as a pollable health
+check, independent of the notification.
+
+**3. On a gap, show the L_eq *and* the window coverage.** e.g. `LCeq 68.2 dB · 33s of 60s`. The
+instrument reports its own state and Simon judges whether to trust the number. No invalidation,
+no automatic reset, no warning — consistent with "he makes the call, not the app", and it never
+shows a number that silently claims more coverage than it has. This supersedes the
+"invalidate the window" option floated above.
+
+**4. Measurement is foreground-only, but the screen must not sleep.** Capture does not survive
+backgrounding (probe 2b), and we are not adding the `audio` background mode — that is the case
+research `01` warned would push toward the Swift/`AVAudioEngine` fallback, and it is not needed
+for an instrument being read at a venue. **But the idle timer must be disabled**
+(`UIApplication.isIdleTimerDisabled` or equivalent), otherwise the screen sleeps mid-talk and
+measurement dies on its own. That is a real MVP requirement discovered by this probe, not a
+nicety.
+
+**5. Low-rate routes measure normally, with no special handling.** Below research `03`'s
+~40 kHz floor (a Bluetooth mic route typically gives 8–16 kHz) the app does *not* refuse and
+does *not* flag the reading. Simon's call, and better aligned with the map's "resist complexity"
+rule than the alternative: refusing is automation plus a warning, for a case that requires
+deliberately measuring through a Bluetooth headset mic.
+
+Implementable coherently because research `03` already requires coefficients computed at runtime
+from the **actual** rate — so at 16 kHz the filter is correctly designed for 16 kHz; it simply
+cannot meet the standard's tolerance near Nyquist. The honesty lives in the spec's stated
+accuracy limitations (ticket [`10`](10-write-the-spec.md) already requires this), not in runtime
+UI.
+
+**Residual risk, stated plainly:** on such a route the displayed number is wrong with no
+indication. Accepted deliberately. Note the tension with decision 3, which exists precisely to
+avoid silently-wrong numbers — the difference is that a gap happens *to* you unbidden, whereas a
+Bluetooth mic route is something you would have to go out of your way to create.
+
 ### How to run them
 
 Two constraints learned in `02`, both of which shape this work:
