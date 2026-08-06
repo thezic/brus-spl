@@ -2,7 +2,7 @@
 
 Parent: [SPL Meter Build](../map.md)
 Type: build
-Status: claimed
+Status: resolved
 Blocked by: —
 
 ## Build
@@ -97,10 +97,13 @@ replaces it properly.
   code on top of it.
 - The spike is gone and `cargo build` produces one binary.
 
-## Built (2026-08-05) — `Status` deliberately still `claimed`
+## Resolved (2026-08-06)
 
-Code is in place and verified as far as the hardware allowed. Not marked resolved and not
-committed: the coordinating session owns both.
+Code is in place and verified as far as the hardware allowed. **The one outstanding item —
+`devicectl install` + `process launch` — is now
+[the Tier 1 device pass](b08-tier-1-device-pass.md)'s**, recorded there explicitly rather than
+held open here. The risk it carries is launch-time, not link-time, and link-time is the only
+part that had to be proven first.
 
 **What exists now**
 

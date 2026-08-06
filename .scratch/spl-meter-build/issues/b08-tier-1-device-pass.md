@@ -23,6 +23,14 @@ xcrun devicectl device process launch --device <udid> net.thezic.decibel-meter
 
 ## What to check, and why each is here
 
+- **`b01`'s unfinished half: `devicectl install` + `process launch`.** Inherited from
+  [Session, capture and the idle timer](b01-session-capture-and-the-idle-timer.md), which
+  proved the *link* — `tauri ios build --debug` reached `BUILD SUCCEEDED` with zero
+  `Undefined symbols` — but never got the app onto the phone, because the paired iPhone 14 Pro
+  reported `unavailable` to `xcrun devicectl list devices`. Nothing on the device has ever run.
+  **Check the device is `available` before anything else in this ticket**, since every item
+  below is blocked on the same install. If it is still `unavailable`, that is the first thing to
+  fix, not a reason to defer the pass.
 - **It launches and captures.** A missing `NSMicrophoneUsageDescription` is a launch-time
   process kill, not a build error — which is what `check-ios-plist.sh` exists to catch after
   the undocumented `Info.plist` merge.
