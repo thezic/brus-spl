@@ -2,7 +2,7 @@
 
 Parent: [SPL Meter Build](../map.md)
 Type: build
-Status: open
+Status: resolved
 Blocked by: [`b10`](b10-the-spectrogram-half-of-the-bridge.md)
 
 ## Build
@@ -99,3 +99,113 @@ without a venetian blind; the legend reads correctly in both `dB/band` and `dBFS
 has been looked at **on the phone**, at arm's length, with a verdict recorded.
 
 `npm run build` typechecks.
+
+## Resolution
+
+**Built, and it draws.** `src/components/Spectrogram.vue` plus `src/spectrogram.ts` (the ramp, the
+dB window and the pixel budget — pure, no DOM), four new strings in `src/display.ts`, `SLOT_MS` on
+the bridge, and `App.vue` handing the whole tick down. `npm run build` typechecks; the 122 Rust
+tests are untouched and green. Both §14.3 eyeball tests were **looked at**, and so were the gap,
+resize, window-change and both-legend cases. **The one Done-when item not met is the phone** — see
+the last paragraph; it is the item the ticket asked for first.
+
+**The rig: a throwaway harness on branch `prototype/b11-spectrogram-harness`** (`harness.html` +
+`src/harness/`, `npm run dev` → `/harness.html`), following `09`'s convention. It drives the real
+component with synthetic columns in a browser and fakes `window.__TAURI_INTERNALS__.invoke`, so the
+*pull* path — mount, resize, window change — is exercised too. Worth keeping: §7.1's `−90 … −30 dBFS`
+colour window is the parameter [the venue run](b13-the-venue-run.md) is most likely to move, and this
+is where a candidate can be looked at in ten seconds.
+
+**Finding 1 — §7.3's "drawn 1:1" cannot be implemented literally, and does not need to be.** 1:1
+would require the aggregated column count to *equal* the plot width in device pixels, which is only
+true when the span happens to divide it; at a 60 s span on a dpr-3 phone the honest choices are 600
+columns into 1050 px (43 % of the width unused) or four slots per column (400 ms of time resolution
+thrown away to fill pixels). Neither is what the rule is protecting. **The rule is *unsmoothed*, and
+1:1 is one case of it**: the pixel budget already guarantees the drawn columns are never *wider*
+than the plot, so what remains is always magnification, and nearest-neighbour magnification
+duplicates columns — it can neither blend nor drop one. The failure the rule exists to prevent, a
+transparent gap smeared into a *dim* column, is a property of interpolation and not of scale. Spec
+§7.3 and §17 carry it. So the picture is drawn as **`buckets × 32` pixels on an offscreen canvas,
+blitted once per changed tick with `imageSmoothingEnabled = false`**.
+
+**Finding 2 — the two-canvas split is what keeps the append rule true.** The data canvas is the only
+thing appended to or scrolled: one `putImageData` of a 1 × 32 column, or one self-`drawImage` to
+scroll. The visible canvas gets one `drawImage` inside the plot rect, which leaves the chrome —
+frame, frequency labels, legend, captions — untouched, so the chrome is redrawn only when a labelled
+setting or the geometry changes rather than ten times a second. History is drawn wholesale in
+exactly one place, `rebuild`, which is what a pull is for.
+
+**Finding 3 — the scroll must composite with `copy`, and the default is silently wrong.** Shifting
+the data canvas left by drawing it onto itself under the default `source-over` leaves the vacated
+columns holding their old pixels, because a transparent source does not erase an opaque
+destination. The symptom is precisely the failure §7.3 legislates against: **a stopped stream smears
+its last column across the picture instead of scrolling holes into it** — a dead stream reading as a
+steady room, arrived at from a direction the spec did not anticipate. `globalCompositeOperation =
+"copy"` makes absence the default and is the reason the gap rule needs no gap branch anywhere
+(`09` finding 8, still true).
+
+**Finding 4 — the bucket grid has to be anchored to slot 0, not to the right edge.** Aggregation
+groups `k = ceil(span / plot px)` slots per drawn column; if the grouping is measured back from
+`now_slot` it re-partitions every time the edge moves, so an appended column lands in a different
+group than the pull put it in and the picture shears by one slot on every re-pull. `floor(slot / k)`
+is absolute, so a column that arrives a tick late lands where it would have landed on time.
+
+**Finding 5 — the frontend twin of `b10`'s cursor bug: a pull drops the columns that arrive while it
+is in flight.** `get_spectrogram` answers from a snapshot Rust took before the round trip, and ticks
+keep arriving during it. Rebuilding from the pull alone therefore discards up to a tick's worth of
+real columns — **a one-slot hole that never heals**, since nothing will send those columns again.
+Columns arriving while a pull is outstanding are held and replayed onto the rebuilt canvas. Same
+shape of bug as `b10` finding 1, at the other end of the same wire, and equally invisible: the
+picture is simply missing a slot nobody counted.
+
+**Finding 6 — `09` finding 6's gutter arithmetic bites once more, in a new place.** With `now`
+right-aligned flush to the plot's right edge and `dBFS/band` right-aligned to the canvas, the two
+strings **touch** in the uncalibrated state — the same "the uncalibrated caption is four characters
+longer" pressure that moved the gutter from 52 px to 58 px, arriving this time as an inter-label
+collision rather than an overprint. `now` is inset 4 px from the plot edge. Also: the top frequency
+label's row centre is under 3 px from the top of the picture, so an unclamped baseline loses the top
+half of `16k` off the canvas — labels are clamped inside the plot's height, ticks are not.
+
+**Finding 7 — a hole and a −90 dBFS column are the same colour, by construction.** The ramp's bottom
+is `#000004` on a `#0a0a0c` field, so the two are indistinguishable at the very bottom of the scale.
+This is not the failure §7.3 is about (that one is about *dim*, i.e. blended, columns) and it is
+mostly unreachable: §16.8 already makes an all-zero hop a gap rather than a floor column, and `b09`
+measured a genuinely quiet room peaking at −53 dBFS in the 50 Hz row, mid-ramp. Recorded rather than
+fixed — the fix would be a non-background backdrop for the plot field, which reads as *a grey box*
+for the first 60 s of every run and contradicts §7.3's own wording. Worth revisiting only if the
+venue run produces a picture that reads as empty when it is not.
+
+**§7.2 is said out loud as one word on the caption line: `−60s · unweighted … now … dBFS/band`.**
+The reader who is about to compare a band colour against a dB(A) number does it at the legend, so
+that is where the sentence had to be. It costs no vertical budget and the geometry is spec §11.7's
+unchanged — 40 px left, 20 px bottom, 58 px right, ~205 px tall. A longer, louder statement was
+drafted and dropped: the picture must not change shape when a settings value changes, so it cannot
+say "not dB(A)" only in dB(A) mode, and the static version of that sentence is a paragraph.
+
+**Looked at, in the harness and then live.** Pink noise (equal energy in every band) draws **one flat
+colour top to bottom**. An exponential sweep draws a **straight diagonal**, with no curvature —
+which is the log axis mapping being right. A source that stops for 2 s of every 5 draws **clean
+black stripes**, not dim ones. At a 120 s span the same stripes compress without a venetian blind or
+a moiré (`k = 2`, aggregated in energy); at 10 s and 330 px wide they magnify crisply. Then under
+`npm run tauri dev` on the built-in microphone: **the rumble stripe below 125 Hz and the syllable
+striations of speech are both unmistakable in the same picture**, which is the entire reason the
+display is a spectrogram and not bars. A forced webview reload repainted the **full 60 s** from
+`get_spectrogram` over real IPC — §9.5's mount row, live. Seeding a +101.4 dB offset into
+`settings.json` and restarting relabelled the legend `11 … 71` and `dB/band` with **the picture
+identical**, which is §7.1's arithmetic confirmed rather than argued.
+
+**Not done: the phone, and therefore the arm's-length verdict** (§13.14, and this ticket's own
+"look at it before polishing"). `xcrun devicectl list devices` reports the paired iPhone as
+`unavailable`, so no build could be installed. **~6 px per band over 32 bands is still unjudged**,
+and it remains the one open question that could move §7.1's band count or this ticket's height. The
+desk evidence is encouraging and is not the same question: at 350 px wide the bands are legible at a
+normal viewing distance, but a desk is not arm's length and a lit room is not a dim venue. This is
+the first thing to do when the phone is back — before [`b12`](b12-re-sign-and-install-rehearsal.md),
+which is the natural moment for it.
+
+**Also untested:** `get_spectrogram` in a WKWebView (§13.14) — 276 KB at a 120 s span parses in
+under a millisecond on the desk and has never run on the device; the resize path in the *Tauri*
+webview specifically (osascript has no accessibility permission here, so the window could not be
+resized from a script — the ResizeObserver and its debounce were exercised in Chrome, and the
+reload path was exercised in the app); and the picture has never been seen next to a **real** venue's
+sound, which is [`b13`](b13-the-venue-run.md)'s job.

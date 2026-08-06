@@ -8,7 +8,7 @@ A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: it
 
 **Implementation runs from `.scratch/spl-meter-build/`** — `map.md` is the index, `issues/b01`–`b13` are the tickets. **Read that map before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b13` here) are deliberately distinct.
 
-The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus five components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. **Tier 1 is closed**, device pass included. Tier 2 is under way: `b09` added `spectrum.rs` — the FFT tap, the third-octave banding and the 1200-column ring — and `b10` put it on the wire, filling the tick's `columns` and adding the seventh command, `get_spectrogram`. **Nothing is on screen yet**; that is `b11`, and nothing in the frontend calls `get_spectrogram` until it exists.
+The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus six components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. **Tier 1 is closed**, device pass included. **Tier 2 is built**: `b09` added `spectrum.rs` — the FFT tap, the third-octave banding and the 1200-column ring — `b10` put it on the wire, and `b11` drew it (`Spectrogram.vue` + `spectrogram.ts`). What is left of Tier 2 is one look: **the picture has never been on the phone**, so §13.14's ~6 px per band is still unjudged — take that verdict at `b12`.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
@@ -90,6 +90,29 @@ The two communicate over Tauri commands: a `#[tauri::command]` fn registered in 
 - Vite ignores `src-tauri/**` for HMR; Rust changes are picked up by Tauri's own watcher and trigger a recompile + app restart.
 - **Rust's `eprintln!` *does* reach the device log — read it with `idevicesyslog`.** `println!` does not reach `devicectl … --console` (spec §2.2), which was read for two tickets as meaning on-device diagnostics must be on screen. They need not: `idevicesyslog -m "capture:" -m "session:"` streams the app's stderr verbatim, tagged `[stderr]`, from a plain shell with no Xcode. That is how `b08` answered the `Measurement`-mode read-back. (`idevicescreenshot` from the same package does *not* work here — it wants the developer disk image over the classic lockdown path.)
 - **`inputmode="decimal"` on iOS offers the locale's decimal separator and no other.** On a comma-locale phone there is no `.` key at all, so `Number(text)` on the raw field value is `NaN` for every decimal the user can actually type, and the control simply stays disabled with nothing on screen to explain it. Any numeric input must accept `,` as well as `.` — see `typed()` in `src/components/SettingsSheet.vue`. Not reproducible on the desk in any way: the Mac keyboard has a dot.
+
+### The picture
+
+`src/components/Spectrogram.vue` draws on **two canvases, and the split is load-bearing**: an
+offscreen `buckets × 32` canvas is the only thing ever appended to or scrolled, and the visible
+canvas gets one `drawImage` of it per changed tick with `imageSmoothingEnabled = false`. That is
+spec §7.3's *append and scroll, never redraw the history*, and it is why the chrome (frame, labels,
+legend, captions) is redrawn only when a labelled setting or the geometry changes.
+
+Two ways to break it silently, both found by `b11`:
+
+- **The scroll must use `globalCompositeOperation = "copy"`.** Under the default `source-over`, a
+  self-`drawImage` leaves the vacated columns holding their old pixels, so a stopped stream smears
+  its last column across the picture instead of scrolling holes into it — §7.3's own "a dead stream
+  reads as a peaceful room" failure, from the one direction the spec does not name.
+- **Columns arriving while a `get_spectrogram` pull is in flight must be held and replayed.** The
+  pull answers from a snapshot taken before the round trip, so rebuilding from it alone drops a
+  tick's worth of real columns into a one-slot hole that never heals.
+
+**To look at the picture with no hardware**: `git checkout prototype/b11-spectrogram-harness && npm
+run dev`, then `/harness.html` — it drives the real component with synthetic pink / sweep / gap /
+ramp columns and a faked `invoke`, in a browser. That is where §14.3's eyeball tests were run, and
+where §7.1's colour window should be re-judged if the venue run moves it.
 
 ### Audio capture
 

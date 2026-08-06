@@ -442,6 +442,33 @@ difference matter (spec §7).
   on the phone, the live gap evidence is the startup frame-fill hole rather than a stopped stream,
   and the picture is still not drawn.
 
+- [The spectrogram canvas](issues/b11-the-spectrogram-canvas.md)
+  — **Built, and it draws: pink flat, the sweep a straight diagonal, holes black, and a real room's
+  rumble stripe and syllable striations in one picture under `npm run tauri dev`.** §14.3's two
+  eyeball tests were finally *looked at* rather than asserted, in a throwaway harness kept on
+  `prototype/b11-spectrogram-harness` that drives the real component with synthetic columns and a
+  faked `invoke`. Spec §11.7's geometry needed no change; **§7.3's "drawn 1:1" did** — 1:1 needs the
+  aggregated column count to equal the plot width in device pixels, which no span and screen
+  generally arrange, and the rule is *unsmoothed*, of which 1:1 is one case: the pixel budget
+  already stops any shrinking, so what is left is magnification, and nearest-neighbour magnification
+  duplicates columns rather than blending them. §7.3 and §17 carry it. The shape that follows is
+  **two canvases** — a `buckets × 32` offscreen one that is the only thing ever appended to or
+  scrolled, and one blit per changed tick into the plot rect, which leaves the chrome standing and
+  makes the append rule literally true. Three bugs worth the ticket: the scroll must composite with
+  **`copy`**, because a self-`drawImage` under `source-over` leaves the vacated columns opaque and
+  **a stopped stream smears its last column across the picture** — §7.3's own failure arrived at
+  from a direction the spec did not anticipate; the bucket grid must be anchored to **slot 0**, or
+  the partition moves with the right edge and the picture shears by a slot on every re-pull; and a
+  pull **drops the columns that arrive while it is in flight** unless they are held and replayed —
+  `b10` finding 1's twin at the other end of the same wire, and just as silent. Recorded and not
+  fixed: **a hole and a −90 dBFS column are the same colour**, which §16.8 already makes
+  near-unreachable. §7.2 is said out loud as one word on the caption line, `−60s · unweighted … now
+  … dBFS/band`, because the comparison it guards against is made at the legend. Live: a forced
+  reload repainted the full 60 s from `get_spectrogram` over real IPC, and a seeded +101.4 dB offset
+  relabelled the legend `11 … 71` with the picture identical. **Not done — the phone.** `devicectl`
+  reports it `unavailable`, so **~6 px per band is still unjudged** and it is still the one answer
+  that could move §7.1's band count or the ~205 px height.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
@@ -458,11 +485,13 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
 - **Arm's-length legibility in a dim venue — the hero half is answered, the band half is not.**
   `b06` established on a desk that `--` reads as a muted absence rather than a redaction bar, and
   `b08` confirmed **on the phone at arm's length** that it reads fine. What remains is the part
-  that was always the risk: **~6 px per band, 32 bands over ~205 px**. `b09` built the bands but put
-  nothing on screen, so this is unchanged and now waits on
-  [the canvas](issues/b11-the-spectrogram-canvas.md) itself. If the answer is "no" it is a correction
-  to the band count or the ~200 px height, so it still wants answering **early in `b11` rather than
-  after polishing it**. Neither half has been seen *dim*.
+  that was always the risk: **~6 px per band, 32 bands over ~205 px**. `b11` has now drawn it and
+  looked at it **on the desk** — legible at a normal viewing distance, which is not the question —
+  but `devicectl` reported the phone `unavailable`, so **the phone verdict was not taken and this is
+  the one Done-when item `b11` left open**. If the answer is "no" it is a correction to the band
+  count or the ~205 px height, and it is cheap: the picture exists now, so it is one install and one
+  look. Do it at [`b12`](issues/b12-re-sign-and-install-rehearsal.md), which is already an install.
+  Neither half has been seen *dim*.
 - **`get_spectrogram` in a WKWebView on the phone.** 276 KB of JSON at a 120 s span parses in
   a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
   the command, aggregating in Rust — costs the single-aggregator property, so it is a trade

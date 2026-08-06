@@ -687,10 +687,15 @@ of one.
   because it is the only side that knows the canvas width (`08`).
 - **Time is drawn blended; band edges are drawn crisp** — a band boundary is real and a column
   boundary is not.
-- **Drawn 1:1 and unsmoothed**, no canvas smooth-scaling (`09`). This is what makes the gap
-  rule below actually work: letting the canvas smooth-scale blends a transparent gap column
-  into its lit neighbours and produces a *dim* column, which is exactly the "dead stream reads
-  as a peaceful room" failure the rule exists to prevent.
+- **Drawn unsmoothed**, no canvas smooth-scaling (`09`). This is what makes the gap rule below
+  actually work: letting the canvas smooth-scale blends a transparent gap column into its lit
+  neighbours and produces a *dim* column, which is exactly the "dead stream reads as a peaceful
+  room" failure the rule exists to prevent. **Corrected by `b11`: this said "1:1 and
+  unsmoothed", and 1:1 is not implementable in general** — it would need the aggregated column
+  count to *equal* the plot width in device pixels. It is also unnecessary: the rule above
+  guarantees the columns are never wider than the plot, so what is left is always
+  magnification, and nearest-neighbour magnification duplicates columns rather than blending or
+  dropping them. The failure being prevented is a property of interpolation, not of scale.
 - **A gap is drawn as a hole — background, visibly absent, never a low-level colour** (`07`
   d11). Forced by consistency rather than chosen: §6.9 refuses to publish a fake quiet, and the
   clock-driven ring produces gap slots by construction. **A slot is a gap if it received no
@@ -1539,6 +1544,7 @@ list exists so a reader who goes back to a ticket is not misled.
 | This spec's own §6.11 table, which had no column for the smoother | **Gains one, with a single entry: a weighting change zeroes it** (`b04`) — without it the same row's max-hold clear is defeated within one block, measured 7 dB high. The first correction the build map has made to this spec rather than to a ticket. |
 | This spec's own §16.4, `P_k = 2·|X_k|²/S1²` | **`2·|X_k|²/(N·S2)`** (`b09`) — the first is the coherent gain, right for one bin and **+1.76 dB high for the band sum** §7.1 actually draws. Its own stated intent, *the same dBFS convention as the meter*, is what the second delivers. The second correction the build map has made to this spec rather than to a ticket. |
 | This spec's own §9.2, "every real column **since the previous publish**" | **Every real column in `(last shipped, now_slot]`** (`b10`) — the two read the same and differ by the slot a zero-hop tick leaves behind for its successor to fill (`b09`). The intent stands; the literal reading loses one column per stall, in the ring but never on the wire. The third correction the build map has made to this spec rather than to a ticket. |
+| This spec's own §7.3, "drawn **1:1** and unsmoothed" | **Unsmoothed is the rule; 1:1 is one case of it** (`b11`) — 1:1 needs the aggregated column count to equal the plot width in device pixels, which the span and the screen do not generally arrange. The pixel budget already prevents shrinking, so what is left is magnification, and nearest-neighbour magnification cannot blend or drop a column. The fourth correction the build map has made to this spec rather than to a ticket. |
 | §13.12's "the 12.5 Hz band is the one band the picture cannot honestly draw" | **Four rows are narrower than a bin, and which one *borrows* depends on the rate** (`b09`) — 20 Hz at 48 kHz, 12.5 Hz at 44.1 kHz. The substance stands; the borrow was never the reason. |
 | `06` d5's default list `(None, C, F, 60 s)` | **`(None, C, S, 60 s)`** — `09` d5 changed the default time weighting after `06` was written. |
 | `07` d8's "the picture is literally what is inside the number" | Read as **the same span, not the same data** (`08` d5) — Reset does not clear the picture. |

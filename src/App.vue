@@ -1,6 +1,5 @@
 <script setup lang="ts">
-// The one screen — spec §11, ticket `b06`. The picture that belongs in the reserved band is
-// `b11`'s; everything else on the meter is here.
+// The one screen — spec §11, tickets `b06` and `b11`.
 //
 //         NOW · C · slow        ← both dimensions; they govern the live number and MAX
 //            65.5
@@ -8,7 +7,7 @@
 //    LCeq 60s        MAX
 //      66.5         67.0
 //    60s of 60s                 ← coverage belongs to the L_eq and sits with it
-//    [ the spectrogram goes here — b11 ]
+//    [ the spectrogram ]        ← b11: unweighted, span following the window
 //              ⋯                ← settings · calibration · reset
 //
 // *The screen leads with the number that moves and keeps the number that is judged permanently
@@ -21,18 +20,28 @@
 //
 // Nothing is gated on `import.meta.env.DEV`: a device build is a *release* build (spec §2.2).
 
-import { onMounted, onUnmounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, shallowRef } from "vue";
 
 import Hero from "./components/Hero.vue";
 import InputLine from "./components/InputLine.vue";
 import Secondary from "./components/Secondary.vue";
 import SettingsSheet from "./components/SettingsSheet.vue";
+import Spectrogram from "./components/Spectrogram.vue";
 import { onTick, type Meter, type Settings, type Tick } from "./bridge";
 import { heroLabel } from "./display";
 
 const meter = ref<Meter | null>(null);
 const settings = ref<Settings | null>(null);
 const sheetOpen = ref(false);
+
+/**
+ * The whole tick, for the picture — which needs `now_slot` and `columns`, not the meter.
+ *
+ * `shallowRef` because it is handed straight to a canvas: nothing reads a field of it reactively,
+ * and making 32 floats × N columns deeply reactive ten times a second would be paying for
+ * proxying nobody observes.
+ */
+const tick = shallowRef<Tick | null>(null);
 
 /**
  * How long a command's own answer outranks the tick.
@@ -50,9 +59,10 @@ let appliedAt = 0;
 
 let unlisten: (() => void) | undefined;
 
-function paint(tick: Tick) {
-  meter.value = tick.meter;
-  if (performance.now() - appliedAt > SETTLE_MS) settings.value = tick.settings;
+function paint(next: Tick) {
+  tick.value = next;
+  meter.value = next.meter;
+  if (performance.now() - appliedAt > SETTLE_MS) settings.value = next.settings;
 }
 
 function applied(answer: Settings) {
@@ -77,12 +87,14 @@ onUnmounted(() => unlisten?.());
       </template>
     </section>
 
-    <!-- The picture's box, reserved rather than drawn: ~205 px tall with all three gutters
+    <!-- The picture, in the box `b06` reserved for it: ~205 px tall with all three gutters
          budgeted — ~40 px left for frequency labels, ~20 px bottom for the time axis, 58 px
-         right for the colour legend (spec §11.7) — so `b11`'s canvas drops in without a
-         relayout. Left empty rather than outlined, because Tier 2 is the droppable tier and an
-         empty box would be the thing that shipped. -->
-    <div class="picture" aria-hidden="true"></div>
+         right for the colour legend (spec §11.7). It takes the whole tick rather than the meter,
+         because what it draws is `now_slot` and `columns`; the settings it takes are the span and
+         the legend's own label. -->
+    <div class="picture">
+      <Spectrogram :tick="tick" :settings="settings" />
+    </div>
 
     <!-- One affordance on the whole screen (spec §11.9). -->
     <button
@@ -184,12 +196,11 @@ input {
   min-height: 14rem;
 }
 
+/* The gutters live inside the canvas now (`b11`), not in this padding: the frequency labels have
+   to line up with band rows only the canvas knows the height of. */
 .picture {
   grid-area: picture;
-  box-sizing: border-box;
   width: 100%;
-  height: 205px;
-  padding: 0 58px 20px 40px;
 }
 
 .more {

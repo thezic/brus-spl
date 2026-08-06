@@ -20,6 +20,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+/**
+ * The ring's slot period, in milliseconds — spec §6.2, mirroring `SLOT_MS` in
+ * `src-tauri/src/metrics.rs`.
+ *
+ * Part of the contract rather than a display constant: `now_slot` and every `Column.slot` are
+ * indices in these units, so a span in seconds is only a number of slots through this.
+ */
+export const SLOT_MS = 100;
+
 export type Weighting = "C" | "A" | "Z";
 export type TimeWeighting = "F" | "S";
 /** A picker, not a numeric field (spec §6.5). */
