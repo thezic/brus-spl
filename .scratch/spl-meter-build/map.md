@@ -467,11 +467,12 @@ difference matter (spec §7).
   reload repainted the full 60 s from `get_spectrogram` over real IPC, and a seeded +101.4 dB offset
   relabelled the legend `11 … 71` with the picture identical. **On the phone it is installed, launched
   and capturing** — `measurement_mode: true`, 48 kHz mono, a clean log and the tick reaching the
-  webview at a flat 100 ms — **but the arm's-length verdict is not taken**: there is no way to see
-  the screen from here (`idevicescreenshot` is broken on this setup, `devicectl` has no screenshot,
-  and `devicectl device orientation` turns out to be simulator-only), and legibility at distance is
-  a human judgement anyway. **~6 px per band is still unjudged** and is still the one answer that
-  could move §7.1's band count or the ~205 px height.
+  webview at a flat 100 ms — **and the verdict is in: ~6 px per band reads fine at arm's length**,
+  so §7.1's band count and §11.7's height stand and the correction three tickets held in reserve is
+  not needed. It had to come from Simon: there is no way to see the screen from here
+  (`idevicescreenshot` is broken on this setup, `devicectl` has no screenshot, and `devicectl device
+  orientation` turns out to be simulator-only). **The ticket is closed on every Done-when clause.**
+  What is left of the question is the *dim* room, which is the venue's to answer.
 
 ## Not yet specified
 
@@ -486,16 +487,13 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   **The third is answered**: `b08` read the hero on real speech on the phone and `S` is **live
   rather than twitchy**, which is the first evidence for `09` d5's choice of `S` as the default. A
   desk is not a venue, but this was the phone and a real voice.
-- **Arm's-length legibility in a dim venue — the hero half is answered, the band half is not.**
-  `b06` established on a desk that `--` reads as a muted absence rather than a redaction bar, and
-  `b08` confirmed **on the phone at arm's length** that it reads fine. What remains is the part
-  that was always the risk: **~6 px per band, 32 bands over ~205 px**. `b11` has now drawn it,
-  looked at it **on the desk** — legible at a normal viewing distance, which is not the question —
-  and **put it on the phone**, where it is installed, launched and capturing. **The verdict itself
-  is the one Done-when item `b11` left open**, and it is the one thing an agent cannot take: there
-  is no working screenshot path off this device, and *legible at arm's length in a dim room* is a
-  judgement rather than a measurement. If the answer is "no" it is a correction to the band count or
-  the ~205 px height. Neither half has been seen *dim*.
+- ~~**Arm's-length legibility — the band half.**~~ **Answered, and the answer is yes.** `b06`
+  established on a desk that `--` reads as a muted absence rather than a redaction bar and `b08`
+  confirmed it on the phone; `b11` drew the picture, put it on the phone, and Simon gave the verdict
+  the map has been carrying since `07`: **~6 px per band, 32 bands over ~205 px, reads fine at arm's
+  length.** So §7.1's band count and §11.7's height stand, and the correction that was held in
+  reserve for three tickets is not needed. **The *dim* half is still open** — neither the picture
+  nor the hero has been seen in a dark room, and that is [the venue run](issues/b13-the-venue-run.md).
 - **`get_spectrogram` in a WKWebView on the phone.** 276 KB of JSON at a 120 s span parses in
   a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
   the command, aggregating in Rust — costs the single-aggregator property, so it is a trade

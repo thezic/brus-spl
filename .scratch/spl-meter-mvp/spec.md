@@ -1369,10 +1369,12 @@ looking at seconds (`07`).
 
 ### 13.14 Untested, and known to be so
 
-- **Arm's-length legibility in a dim venue.** The layout reached the device, but **no verdict has
-  been given** on whether ~6 px per band (32 bands over ~205 px) reads at distance, and the same
-  question applies to the muted `--` at hero size. If it fails, the fix is a correction to the band
-  count or the ~200 px height. **Cheap to answer — the build is installed.**
+- ~~**Arm's-length legibility.**~~ **Answered, both halves.** `b08` gave the verdict on the muted
+  `--` at hero size, and `b11` put the picture on the phone and got the one this section was
+  actually about: **~6 px per band, 32 bands over ~205 px, reads fine at arm's length.** So the
+  band count and the ~205 px height stand as §7.1 and §11.7 set them — the correction this
+  section reserved is not needed. **What is still unanswered is the *dim* half**: neither the
+  picture nor the hero has been seen in a dark room, and that arrives with the venue run.
 - **A real microphone and a real room.** Every prototype number came from synthetic or scripted
   sources. The parts most likely to want revisiting are the colour window's default (§7.1) and the
   *feel* of the hero number on real speech.

@@ -106,8 +106,9 @@ has been looked at **on the phone**, at arm's length, with a verdict recorded.
 dB window and the pixel budget — pure, no DOM), four new strings in `src/display.ts`, `SLOT_MS` on
 the bridge, and `App.vue` handing the whole tick down. `npm run build` typechecks; the 122 Rust
 tests are untouched and green. Both §14.3 eyeball tests were **looked at**, and so were the gap,
-resize, window-change and both-legend cases. **The one Done-when item not met is the phone** — see
-the last paragraph; it is the item the ticket asked for first.
+resize, window-change and both-legend cases. **Every Done-when clause is met, the phone included**:
+it is installed and running there, and the arm's-length verdict the ticket asked for first came back
+*the bands read fine*.
 
 **The rig: a throwaway harness on branch `prototype/b11-spectrogram-harness`** (`harness.html` +
 `src/harness/`, `npm run dev` → `/harness.html`), following `09`'s convention. It drives the real
@@ -212,12 +213,14 @@ No rate change, no rebuild, no error, and `WebPageProxy::runJavaScriptInFrameInS
 flat 100 ms in the log — the tick reaching the webview on the device, which is the picture being
 fed. So **the canvas runs on the phone**; what is unanswered is what it *looks* like there.
 
-**Still open: the arm's-length verdict itself** (§13.14, and this ticket's own "look at it before
-polishing"). **~6 px per band over 32 bands is unjudged**, and it is still the one answer that could
-move §7.1's band count or this ticket's height. It cannot be taken from here: `idevicescreenshot`
-does not work on this setup (`CLAUDE.md`), `devicectl` has no screenshot subcommand, and legibility
-at distance in a dim room is a human judgement in any case. The desk evidence is encouraging and is
-not the same question. Handed to Simon with the app already on the phone.
+**The arm's-length verdict, which is this ticket's last clause: the bands read fine.** Simon's call,
+on the phone, with the picture drawing live — **~6 px per band over 32 bands is legible at arm's
+length**. So §7.1's band count and §11.7's ~205 px height stand as written, and the correction that
+`07`, `09` and §13.14 all held in reserve for this moment is **not needed**. It had to come from a
+person: `idevicescreenshot` does not work on this setup (`CLAUDE.md`), `devicectl` has no screenshot
+subcommand, and legibility at distance is a judgement rather than a measurement. §13.14 and the
+map's fog both carry it. **What is still unanswered is the *dim* half of that question** — nobody
+has seen this screen in a dark room, and that is [`b13`](b13-the-venue-run.md)'s.
 
 **Also learned, and small: `devicectl device orientation` is simulator-only** — it answers
 `CoreDeviceError 1001, The capability "Device Orientation" is not supported by this device` on a
