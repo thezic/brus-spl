@@ -194,18 +194,39 @@ display is a spectrogram and not bars. A forced webview reload repainted the **f
 `settings.json` and restarting relabelled the legend `11 … 71` and `dB/band` with **the picture
 identical**, which is §7.1's arithmetic confirmed rather than argued.
 
-**Not done: the phone, and therefore the arm's-length verdict** (§13.14, and this ticket's own
-"look at it before polishing"). `xcrun devicectl list devices` reports the paired iPhone as
-`unavailable`, so no build could be installed. **~6 px per band over 32 bands is still unjudged**,
-and it remains the one open question that could move §7.1's band count or this ticket's height. The
-desk evidence is encouraging and is not the same question: at 350 px wide the bands are legible at a
-normal viewing distance, but a desk is not arm's length and a lit room is not a dim venue. This is
-the first thing to do when the phone is back — before [`b12`](b12-re-sign-and-install-rehearsal.md),
-which is the natural moment for it.
+**On the phone: it is installed and running, and the verdict is the one thing still outstanding.**
+The device was `unavailable` on the first attempt and available on the second. `env -u FORCE_COLOR
+npx tauri ios build --debug` reached its bundle with the new frontend in it,
+`./scripts/check-ios-plist.sh` passed, and `devicectl` installed and launched onto the iPhone 14
+Pro. The device log is clean and says the session is exactly what §3.1 asks for:
 
-**Also untested:** `get_spectrogram` in a WKWebView (§13.14) — 276 KB at a 120 s span parses in
-under a millisecond on the desk and has never run on the device; the resize path in the *Tauri*
-webview specifically (osascript has no accessibility permission here, so the window could not be
-resized from a script — the ResizeObserver and its debounce were exercised in Chrome, and the
-reload path was exercised in the app); and the picture has never been seen next to a **real** venue's
-sound, which is [`b13`](b13-the-venue-run.md)'s job.
+```
+[stderr] capture: running CaptureFacts { device: "coreaudio:default", sample_format: "f32",
+  sample_rate: 48000, channels: 1, buffer_frames: Some(1024),
+  session: Some(SessionFacts { sample_rate: 48000.0, input_channels: 1,
+    mode: "AVAudioSessionModeMeasurement", measurement_mode: true,
+    io_buffer_duration: 0.021333333333333333, permission_granted: true }) }
+```
+
+No rate change, no rebuild, no error, and `WebPageProxy::runJavaScriptInFrameInScriptWorld` at a
+flat 100 ms in the log — the tick reaching the webview on the device, which is the picture being
+fed. So **the canvas runs on the phone**; what is unanswered is what it *looks* like there.
+
+**Still open: the arm's-length verdict itself** (§13.14, and this ticket's own "look at it before
+polishing"). **~6 px per band over 32 bands is unjudged**, and it is still the one answer that could
+move §7.1's band count or this ticket's height. It cannot be taken from here: `idevicescreenshot`
+does not work on this setup (`CLAUDE.md`), `devicectl` has no screenshot subcommand, and legibility
+at distance in a dim room is a human judgement in any case. The desk evidence is encouraging and is
+not the same question. Handed to Simon with the app already on the phone.
+
+**Also learned, and small: `devicectl device orientation` is simulator-only** — it answers
+`CoreDeviceError 1001, The capability "Device Orientation" is not supported by this device` on a
+real phone. So the orientation-change re-pull cannot be driven from a script; rotating the phone by
+hand is the test.
+
+**Also untested:** `get_spectrogram` in a WKWebView with a *full* ring (§13.14) — the pull certainly
+ran at mount, but the ring was empty then, so 276 KB at a 120 s span has still never been parsed on
+the device; the resize path in the Tauri webview specifically (osascript has no accessibility
+permission here and the phone cannot be rotated remotely — the ResizeObserver and its debounce were
+exercised in Chrome, and the reload path in the desktop app); and the picture has never been seen
+next to a **real** venue's sound, which is [`b13`](b13-the-venue-run.md)'s job.

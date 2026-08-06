@@ -465,9 +465,13 @@ difference matter (spec §7).
   near-unreachable. §7.2 is said out loud as one word on the caption line, `−60s · unweighted … now
   … dBFS/band`, because the comparison it guards against is made at the legend. Live: a forced
   reload repainted the full 60 s from `get_spectrogram` over real IPC, and a seeded +101.4 dB offset
-  relabelled the legend `11 … 71` with the picture identical. **Not done — the phone.** `devicectl`
-  reports it `unavailable`, so **~6 px per band is still unjudged** and it is still the one answer
-  that could move §7.1's band count or the ~205 px height.
+  relabelled the legend `11 … 71` with the picture identical. **On the phone it is installed, launched
+  and capturing** — `measurement_mode: true`, 48 kHz mono, a clean log and the tick reaching the
+  webview at a flat 100 ms — **but the arm's-length verdict is not taken**: there is no way to see
+  the screen from here (`idevicescreenshot` is broken on this setup, `devicectl` has no screenshot,
+  and `devicectl device orientation` turns out to be simulator-only), and legibility at distance is
+  a human judgement anyway. **~6 px per band is still unjudged** and is still the one answer that
+  could move §7.1's band count or the ~205 px height.
 
 ## Not yet specified
 
@@ -485,13 +489,13 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
 - **Arm's-length legibility in a dim venue — the hero half is answered, the band half is not.**
   `b06` established on a desk that `--` reads as a muted absence rather than a redaction bar, and
   `b08` confirmed **on the phone at arm's length** that it reads fine. What remains is the part
-  that was always the risk: **~6 px per band, 32 bands over ~205 px**. `b11` has now drawn it and
+  that was always the risk: **~6 px per band, 32 bands over ~205 px**. `b11` has now drawn it,
   looked at it **on the desk** — legible at a normal viewing distance, which is not the question —
-  but `devicectl` reported the phone `unavailable`, so **the phone verdict was not taken and this is
-  the one Done-when item `b11` left open**. If the answer is "no" it is a correction to the band
-  count or the ~205 px height, and it is cheap: the picture exists now, so it is one install and one
-  look. Do it at [`b12`](issues/b12-re-sign-and-install-rehearsal.md), which is already an install.
-  Neither half has been seen *dim*.
+  and **put it on the phone**, where it is installed, launched and capturing. **The verdict itself
+  is the one Done-when item `b11` left open**, and it is the one thing an agent cannot take: there
+  is no working screenshot path off this device, and *legible at arm's length in a dim room* is a
+  judgement rather than a measurement. If the answer is "no" it is a correction to the band count or
+  the ~205 px height. Neither half has been seen *dim*.
 - **`get_spectrogram` in a WKWebView on the phone.** 276 KB of JSON at a 120 s span parses in
   a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
   the command, aggregating in Rust — costs the single-aggregator property, so it is a trade
