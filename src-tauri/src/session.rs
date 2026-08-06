@@ -147,6 +147,56 @@ pub fn configure() -> Result<Option<SessionFacts>, String> {
     Ok(None)
 }
 
+/// The authoritative answer to spec §9.4's question, as opposed to the exact-zeros heuristic.
+///
+/// Three states rather than a bool because the app has to distinguish *the user said no* — which
+/// is fixable, but only from outside the app — from *there is no answer yet*, which is the
+/// permission prompt still being on screen.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MicPermission {
+    Granted,
+    Denied,
+    /// Asked, not yet answered: the prompt is up.
+    Undetermined,
+}
+
+/// Reads `AVAudioSession.recordPermission`. `None` off iOS, where the question has no answer.
+///
+/// Deliberately **not** the exact-zeros heuristic (spec §9.4): an authoritative answer exists, so
+/// inferring one from the samples would be guessing where the OS will simply say. Read live on
+/// every tick rather than cached from [`configure`], because [`SessionFacts::permission_granted`]
+/// records what the prompt returned once, and this records what is true now.
+///
+/// `AVAudioSession`'s property rather than iOS 17's `AVAudioApplication`, matching [`configure`]'s
+/// choice of the deprecated `requestRecordPermission` for the same reason: it still works and it
+/// works on older devices.
+#[cfg(target_os = "ios")]
+pub fn permission() -> Option<MicPermission> {
+    use objc2_avf_audio::{AVAudioSession, AVAudioSessionRecordPermission};
+
+    // SAFETY: read-only property access on the process-wide singleton Apple documents as
+    // thread-safe. Called from the tick thread, never the audio callback.
+    #[allow(deprecated)]
+    unsafe {
+        let granted = AVAudioSession::sharedInstance().recordPermission();
+        Some(if granted == AVAudioSessionRecordPermission::Granted {
+            MicPermission::Granted
+        } else if granted == AVAudioSessionRecordPermission::Denied {
+            MicPermission::Denied
+        } else {
+            MicPermission::Undetermined
+        })
+    }
+}
+
+/// No session, so no answer — which is spec §9.4's desktop caveat in one line: macOS reports
+/// `capturing` wherever the stream is running, because TCC attributes the request to the
+/// responsible parent process and there is nothing here to ask.
+#[cfg(not(target_os = "ios"))]
+pub fn permission() -> Option<MicPermission> {
+    None
+}
+
 /// Re-reads the live session without changing it. iOS only; `None` elsewhere.
 ///
 /// Separate from [`configure`] because a route change moves these values under a running

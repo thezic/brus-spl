@@ -169,6 +169,14 @@ impl Metrics {
         self.window_s
     }
 
+    /// The absolute index of the slot the clock is in, for spec §9.1's `now_slot`.
+    ///
+    /// Read **after** [`Metrics::levels`], which is what advances the ring — otherwise the value
+    /// is one tick stale and the picture's right edge lies about how current the silence is.
+    pub fn now_slot(&self) -> u64 {
+        self.current
+    }
+
     /// Changing the window **re-slices the ring — no reset** (spec §6.5).
     ///
     /// The ring holds valid energy at any length, so this setting is nothing but *how far back

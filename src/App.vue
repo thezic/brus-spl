@@ -1,15 +1,34 @@
 <script setup lang="ts">
-// TEMPORARY READOUT — ticket b01. The real screen is b06, and it replaces this file whole.
+// TEMPORARY READOUT — tickets b01–b05. The real screen is b06, and it replaces this file whole.
 //
-// This is not a meter layout and is not trying to be one. It exists because `println!` from
-// Rust does not reach `xcrun devicectl … --console` (spec §2.2), so the only way to see
-// whether the phone is actually capturing — and what rate, channel count and mode it was
-// granted — is to put those numbers on the phone's own screen.
+// This is not a meter layout and is not trying to be one. It exists because `println!` from Rust
+// does not reach `xcrun devicectl … --console` (spec §2.2), so the only way to see what the phone
+// is doing is to put it on the phone's own screen — and, from b05, to have somewhere to press the
+// six commands from.
+//
+// Everything painted comes from the tick; nothing here is authoritative. The one exception is the
+// two text fields, which are input buffers rather than state (spec §9.2).
 //
 // Nothing here is gated on `import.meta.env.DEV`: a device build is a *release* build.
 import { onMounted, onUnmounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  onTick,
+  reset,
+  setCalibrationFromReference,
+  setCalibrationOffset,
+  setTimeWeighting,
+  setWeighting,
+  setWindowLength,
+  type Settings,
+  type Tick,
+  type TimeWeighting,
+  type Weighting,
+  type WindowLength,
+} from "./bridge";
 
+// The facts the tick has no place for. A separate temporary command, polled slowly — the tick is
+// the 10 Hz path and this is a device diagnostic that changes once a session.
 interface SessionFacts {
   sampleRate: number;
   inputChannels: number;
@@ -33,55 +52,100 @@ type CaptureState =
   | ({ state: "running" } & CaptureFacts)
   | { state: "failed"; reason: string };
 
-// snake_case, unlike the rest of this file: these are the four settings in the shape spec §9.1
-// puts them on the wire, and `b04` deliberately made the Rust field names and these the same
-// strings. `b05`'s `src/bridge.ts` owns this type for real.
-interface Settings {
-  weighting: "C" | "A" | "Z";
-  time_weighting: "F" | "S";
-  window_s: number;
-  offset_db: number | null;
-}
-
-interface Readout {
+interface Diagnostics {
   capture: CaptureState;
   blocks: number;
   dropped: number;
-  level: number | null;
-  unit: "dB" | "dBFS";
-  settings: Settings;
   lastError: string | null;
 }
 
-// 10 Hz, matching the tick b05 will replace this polling with.
-const POLL_MS = 100;
+const DIAGNOSTICS_MS = 1000;
 
-const readout = ref<Readout | null>(null);
-const pollError = ref<string | null>(null);
+const tick = ref<Tick | null>(null);
+const diagnostics = ref<Diagnostics | null>(null);
+const outcome = ref<string | null>(null);
+const failure = ref<string | null>(null);
+
+// Measured rather than assumed: the Done-when asks for ticks *at 10 Hz*, and a rate that has
+// drifted is the kind of thing that only shows as a sluggish-feeling meter otherwise.
+const ticks = ref(0);
+const rate = ref(0);
+let counted = 0;
+let countedAt = performance.now();
+
+const reference = ref("");
+const offset = ref("");
+
+let unlisten: (() => void) | undefined;
 let timer: number | undefined;
 
-async function poll() {
+// Command returns exist for feel, not truth (spec §9.2) — so a tap paints its own result at once
+// rather than waiting up to 100 ms. Here that also makes the return value *visible*, which is
+// what the Done-when is asking to see.
+async function run(what: string, command: () => Promise<Settings>) {
   try {
-    readout.value = await invoke<Readout>("capture_readout");
-    pollError.value = null;
+    const settings = await command();
+    outcome.value = `${what} → ${JSON.stringify(settings)}`;
+    failure.value = null;
   } catch (e) {
-    pollError.value = String(e);
+    outcome.value = null;
+    failure.value = `${what} → rejected: ${String(e)}`;
   }
 }
 
-onMounted(() => {
-  void poll();
-  timer = window.setInterval(() => void poll(), POLL_MS);
+const weightings: Weighting[] = ["C", "A", "Z"];
+const timeWeightings: TimeWeighting[] = ["F", "S"];
+const windows: WindowLength[] = [10, 30, 60, 120];
+
+function calibrateFromReference() {
+  const value = Number(reference.value);
+  void run(`set_calibration_from_reference(${reference.value})`, () =>
+    setCalibrationFromReference(value),
+  );
+}
+
+function calibrateFromOffset() {
+  const value = Number(offset.value);
+  void run(`set_calibration_offset(${offset.value})`, () => setCalibrationOffset(value));
+}
+
+async function pollDiagnostics() {
+  try {
+    diagnostics.value = await invoke<Diagnostics>("capture_diagnostics");
+  } catch (e) {
+    failure.value = String(e);
+  }
+}
+
+onMounted(async () => {
+  unlisten = await onTick((payload) => {
+    tick.value = payload;
+    ticks.value += 1;
+    counted += 1;
+    const now = performance.now();
+    if (now - countedAt >= 2000) {
+      rate.value = (counted * 1000) / (now - countedAt);
+      counted = 0;
+      countedAt = now;
+    }
+  });
+  void pollDiagnostics();
+  timer = window.setInterval(() => void pollDiagnostics(), DIAGNOSTICS_MS);
 });
 
 onUnmounted(() => {
+  unlisten?.();
   if (timer !== undefined) window.clearInterval(timer);
 });
+
+function db(value: number | null): string {
+  return value != null ? value.toFixed(1) : "--";
+}
 </script>
 
 <template>
   <main>
-    <p class="tag">b01/b04 — temporary capture readout</p>
+    <p class="tag">b01–b05 — temporary tick readout</p>
 
     <!-- `--` rather than a number whenever the level is undefined: exact-zero blocks from a
          denied microphone must not render as a very quiet room (spec §6.9).
@@ -90,73 +154,141 @@ onUnmounted(() => {
          §9.2's footgun-denial extended from values to labels: `dBFS` while uncalibrated is a
          correctly-named different quantity, not a wrong SPL (spec §8.6). -->
     <p class="hero">
-      {{ readout?.level != null ? readout.level.toFixed(1) : "--" }}
-      <span class="unit">{{ readout?.unit ?? "dBFS" }}</span>
+      {{ db(tick?.meter.inst ?? null) }}
+      <span class="unit">{{ tick?.settings.unit ?? "dBFS" }}</span>
     </p>
 
-    <template v-if="readout">
+    <template v-if="tick">
+      <dl>
+        <dt>Leq</dt>
+        <dd>{{ db(tick.meter.leq) }} {{ tick.settings.unit }}</dd>
+        <dt>max</dt>
+        <dd>{{ db(tick.meter.max) }} {{ tick.settings.unit }}</dd>
+        <dt>coverage</dt>
+        <dd>{{ tick.meter.coverage_s.toFixed(1) }}s of {{ tick.settings.window_s }}s</dd>
+        <dt>cal slice</dt>
+        <dd>
+          {{ db(tick.meter.cal_leq) }} {{ tick.settings.unit }} over
+          {{ tick.meter.cal_coverage_s.toFixed(1) }}s of 10s
+        </dd>
+        <dt>input</dt>
+        <dd>{{ tick.meter.input }}</dd>
+        <dt>now_slot</dt>
+        <dd>{{ tick.now_slot }} · {{ tick.columns.length }} columns</dd>
+        <dt>ticks</dt>
+        <dd>{{ ticks }} at {{ rate.toFixed(2) }} Hz</dd>
+        <dt>offset</dt>
+        <dd>
+          {{
+            tick.settings.offset_db != null
+              ? `${tick.settings.offset_db.toFixed(1)} dB`
+              : "unset — uncalibrated"
+          }}
+        </dd>
+      </dl>
+
+      <!-- The six commands. b06 replaces all of this with the real sheet; here it exists only so
+           every command can be pressed on the desk and on the phone. -->
+      <div class="controls">
+        <div class="row">
+          <span class="label">weighting</span>
+          <button
+            v-for="w in weightings"
+            :key="w"
+            :class="{ on: tick.settings.weighting === w }"
+            @click="run(`set_weighting(${w})`, () => setWeighting(w))"
+          >
+            {{ w }}
+          </button>
+        </div>
+        <div class="row">
+          <span class="label">time wt</span>
+          <button
+            v-for="t in timeWeightings"
+            :key="t"
+            :class="{ on: tick.settings.time_weighting === t }"
+            @click="run(`set_time_weighting(${t})`, () => setTimeWeighting(t))"
+          >
+            {{ t }}
+          </button>
+        </div>
+        <div class="row">
+          <span class="label">window</span>
+          <button
+            v-for="s in windows"
+            :key="s"
+            :class="{ on: tick.settings.window_s === s }"
+            @click="run(`set_window_length(${s})`, () => setWindowLength(s))"
+          >
+            {{ s }}s
+          </button>
+        </div>
+        <div class="row">
+          <span class="label">reference</span>
+          <input v-model="reference" inputmode="decimal" placeholder="68.3" />
+          <button @click="calibrateFromReference">match</button>
+        </div>
+        <div class="row">
+          <span class="label">offset</span>
+          <input v-model="offset" inputmode="decimal" placeholder="101.4" />
+          <button @click="calibrateFromOffset">set</button>
+        </div>
+        <div class="row">
+          <span class="label">reset</span>
+          <button @click="run('reset()', reset)">clear window + max</button>
+        </div>
+      </div>
+
+      <p v-if="outcome" class="outcome">{{ outcome }}</p>
+      <p v-if="failure" class="err">{{ failure }}</p>
+    </template>
+
+    <template v-if="diagnostics">
       <p class="state">
-        {{ readout.capture.state }}
-        <span v-if="readout.capture.state === 'failed'"> — {{ readout.capture.reason }}</span>
+        {{ diagnostics.capture.state }}
+        <span v-if="diagnostics.capture.state === 'failed'">
+          — {{ diagnostics.capture.reason }}
+        </span>
       </p>
 
       <dl>
         <dt>blocks</dt>
-        <dd>{{ readout.blocks }}</dd>
+        <dd>{{ diagnostics.blocks }}</dd>
         <dt>dropped</dt>
-        <dd>{{ readout.dropped }}</dd>
+        <dd>{{ diagnostics.dropped }}</dd>
 
-        <!-- The persisted settings, straight from Rust. No command changes them yet — that is
-             b05 — so this is here to show what `settings.json` was loaded as. -->
-        <dt>weighting</dt>
-        <dd>{{ readout.settings.weighting }}</dd>
-        <dt>time wt</dt>
-        <dd>{{ readout.settings.time_weighting }}</dd>
-        <dt>window</dt>
-        <dd>{{ readout.settings.window_s }} s</dd>
-        <dt>offset</dt>
-        <dd>
-          {{
-            readout.settings.offset_db != null
-              ? `${readout.settings.offset_db.toFixed(1)} dB`
-              : "unset — uncalibrated"
-          }}
-        </dd>
-
-        <template v-if="readout.capture.state === 'running'">
+        <template v-if="diagnostics.capture.state === 'running'">
           <dt>rate</dt>
-          <dd>{{ readout.capture.sampleRate }} Hz</dd>
+          <dd>{{ diagnostics.capture.sampleRate }} Hz</dd>
           <dt>channels</dt>
-          <dd>{{ readout.capture.channels }}</dd>
+          <dd>{{ diagnostics.capture.channels }}</dd>
           <dt>format</dt>
-          <dd>{{ readout.capture.sampleFormat }}</dd>
+          <dd>{{ diagnostics.capture.sampleFormat }}</dd>
           <dt>buffer</dt>
-          <dd>{{ readout.capture.bufferFrames ?? "?" }} frames</dd>
+          <dd>{{ diagnostics.capture.bufferFrames ?? "?" }} frames</dd>
           <dt>device</dt>
-          <dd>{{ readout.capture.device }}</dd>
+          <dd>{{ diagnostics.capture.device }}</dd>
 
-          <template v-if="readout.capture.session">
+          <template v-if="diagnostics.capture.session">
             <dt>session rate</dt>
-            <dd>{{ readout.capture.session.sampleRate }} Hz</dd>
+            <dd>{{ diagnostics.capture.session.sampleRate }} Hz</dd>
             <dt>session ch</dt>
-            <dd>{{ readout.capture.session.inputChannels }}</dd>
+            <dd>{{ diagnostics.capture.session.inputChannels }}</dd>
             <dt>mode</dt>
             <dd>
-              {{ readout.capture.session.mode }}
-              <span v-if="!readout.capture.session.measurementMode"> (NOT Measurement)</span>
+              {{ diagnostics.capture.session.mode }}
+              <span v-if="!diagnostics.capture.session.measurementMode"> (NOT Measurement)</span>
             </dd>
             <dt>io buffer</dt>
-            <dd>{{ (readout.capture.session.ioBufferDuration * 1000).toFixed(2) }} ms</dd>
+            <dd>{{ (diagnostics.capture.session.ioBufferDuration * 1000).toFixed(2) }} ms</dd>
             <dt>mic</dt>
-            <dd>{{ readout.capture.session.permissionGranted ? "granted" : "NOT GRANTED" }}</dd>
+            <dd>{{ diagnostics.capture.session.permissionGranted ? "granted" : "NOT GRANTED" }}</dd>
           </template>
         </template>
       </dl>
 
-      <p v-if="readout.lastError" class="err">stream error: {{ readout.lastError }}</p>
+      <p v-if="diagnostics.lastError" class="err">stream error: {{ diagnostics.lastError }}</p>
     </template>
-
-    <p v-if="pollError" class="err">{{ pollError }}</p>
   </main>
 </template>
 
@@ -198,7 +330,7 @@ main {
 }
 
 .state {
-  margin: 0 0 0.75rem;
+  margin: 0.75rem 0;
   opacity: 0.8;
 }
 
@@ -216,6 +348,50 @@ dt {
 
 dd {
   margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.controls {
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+}
+
+.label {
+  width: 5.5rem;
+  flex: none;
+  opacity: 0.5;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+  background: #1e1e1e;
+  border: 1px solid #3a3a3a;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+}
+
+input {
+  width: 5rem;
+}
+
+button.on {
+  background: #eee;
+  color: #111;
+}
+
+.outcome {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  opacity: 0.7;
   overflow-wrap: anywhere;
 }
 

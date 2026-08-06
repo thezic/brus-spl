@@ -149,6 +149,22 @@ pub struct Capture {
 }
 
 impl Capture {
+    /// The capture side before anything has been started: no session, no thread, no stream.
+    ///
+    /// Split out of [`Capture::start`] so `b05`'s command site can be exercised **with no
+    /// hardware and no sleeping** — the property `b03` designed the metrics pipeline around. An
+    /// unstarted `Capture` reports [`CaptureState::Starting`], drains nothing, and still carries
+    /// the weighting selection, which is all the commands touch.
+    pub fn new(weighting: Weighting) -> Arc<Capture> {
+        Arc::new(Capture {
+            state: Mutex::new(CaptureState::Starting),
+            consumer: Mutex::new(None),
+            dropped: Arc::new(AtomicU64::new(0)),
+            last_error: Arc::new(Mutex::new(None)),
+            weighting: Arc::new(AtomicU8::new(chain_index(weighting))),
+        })
+    }
+
     /// Starts capture on a dedicated thread and returns immediately.
     ///
     /// Non-blocking on purpose. [`session::configure`] waits on a permission prompt whose
@@ -159,14 +175,7 @@ impl Capture {
     /// `weighting` is the **persisted** setting, passed in rather than defaulted so the first
     /// block of the session is already filtered the way the reader left it (`b04`).
     pub fn start(weighting: Weighting) -> Arc<Capture> {
-        let capture = Arc::new(Capture {
-            state: Mutex::new(CaptureState::Starting),
-            consumer: Mutex::new(None),
-            dropped: Arc::new(AtomicU64::new(0)),
-            last_error: Arc::new(Mutex::new(None)),
-            weighting: Arc::new(AtomicU8::new(chain_index(weighting))),
-        });
-
+        let capture = Capture::new(weighting);
         let owned = Arc::clone(&capture);
         std::thread::Builder::new()
             .name("capture".into())

@@ -227,6 +227,37 @@ difference matter (spec §7).
   §6.11 and §17 now carry the column and the correction. Not yet run: the swap on a **live** cpal
   stream, and write-through outside the tests — both wait on `b05`'s commands.
 
+- [The bridge and the 10 Hz tick](issues/b05-the-bridge-and-the-tick.md)
+  — **Built and green: 91 tests, and every item of the Done-when driven live against a real
+  microphone rather than described.** Spec §9 needed no correction and **§16.6 met code and stands** —
+  a std thread with a sleep-until loop on `Instant` measured **30 ticks in 3.000 s = 10.00 Hz**, with
+  not one `emit` failure across five launches. What did need correcting is **the ticket's own
+  contract, in the one place neither compiler could see it**: §9.1 writes the five-field `settings`
+  block inside the tick and, in a separate sentence, that the commands return "the new `Settings`" —
+  and `b04`'s `Settings` is those four values *without* the unit and with the offset unrounded. Both
+  halves typecheck, both are tested, and `src/bridge.ts` declares one interface for both, so a
+  command return simply read **`undefined` for `.unit`** at runtime. It matters precisely once:
+  [the screen](issues/b06-the-screen.md) must take picker feedback from the return rather than the
+  next tick, and the one act that changes the unit is calibration — so §9.2's footgun-denial would
+  have failed at the only moment it was written for. Every command now returns the same
+  `WireSettings` the tick carries, asserted **byte-identical as JSON**. **It was found by running the
+  app on its first launch, not by reading it** — the seam between two individually-correct contracts
+  is where a hand-written bridge goes wrong quietly, which is the argument for driving a dev-loop
+  pass rather than describing one. Two smaller things the live run settled: the offset is rounded on
+  the wire while the store keeps it exact (`+117.2` on screen against `117.16…` on disk), which is
+  what makes §8.5's editable offset stable under a retype; and **after a Reset the max hold is
+  non-null again within one tick**, at the current level (`61.1 → 58.5` beside `14.9s → 0.1s`),
+  because §6.8 deliberately spares the smoother and the max compares at block rate — so `MAX --` is a
+  silence state, never a Reset state. Structurally: the tick drains, deposits and publishes **under
+  the `metrics` lock**, which is what makes `b04` finding 2's discard-then-clear ordering actually
+  hold against the tick thread; `Capture::new` was split out of `Capture::start` so that **spec
+  §6.11's whole table is now tested at the site that composes it**, with no hardware and no sleeping.
+  A nine-breakage mutation pass caught eight; **the survivor is worth repeating** — a window-length
+  test that fills the ring with *less* audio than the length it rejects cannot tell a re-sliced ring
+  from an untouched one, which is `b03`'s ring-clearing hole in a different costume. Untested and
+  said so: the drain-and-discard inside `set_weighting`, which needs a producer an unstarted
+  `Capture` cannot have, and the snake_case **argument** names, which only the live press exercises.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
@@ -250,20 +281,24 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
 - **`"denied"` on macOS.** Per `CLAUDE.md`, `tauri dev` gets microphone access through the
   responsible parent process, so the desk may report `capturing` where the phone reports
   `denied` — spec §9.4's most useful state is the one hardest to exercise where you are
-  building it.
+  building it. `b05` confirmed the desk half: there is no `recordPermission` to read off iOS at
+  all, so macOS reported `capturing` throughout and **cannot** produce the other two. The
+  precedence — permission before stream, because a denied microphone still builds a stream — has
+  a unit test standing in for a device.
 - **Route-change recovery.** Probe 3 was never run for want of headphones. Do it with
   headphones to hand.
 - **The 200 ms staleness threshold is reasoned, not measured** (§6.9). iOS drain jitter was
-  never characterised. If `--` flickers in practice, that number is the dial.
+  never characterised — `b05` measured the *tick* at a flat 10.00 Hz, but on macOS, where the
+  drain has nothing to be jittery about. If `--` flickers in practice, that number is the dial.
 - **Whether spec [§16](../spl-meter-mvp/spec.md#16-what-this-spec-decides-that-no-ticket-decided)'s
   eleven choices survive contact with code.** `realfft`, `rtrb`, the FFT power normalisation
   and eight smaller calls were made by the spec rather than by any ticket, and listed there
   expressly so they could be vetoed in review rather than discovered in code. A ticket that
   finds one of them wrong should say so in its resolution rather than working around it.
-  **Nothing is vetoed so far.** §16.2, §16.4, §16.7, §16.9 and §16.11 have met code and all five
-  stand — though `b03` found §16.7's *rationale* unreliable while its rule holds, which is the one
-  case where reading the justification rather than the clause would have produced wrong behaviour.
-  §16.1, §16.3, §16.5, §16.6, §16.8 and §16.10 are still untouched.
+  **Nothing is vetoed so far.** §16.2, §16.4, §16.6, §16.7, §16.9 and §16.11 have met code and all
+  six stand — though `b03` found §16.7's *rationale* unreliable while its rule holds, which is the
+  one case where reading the justification rather than the clause would have produced wrong
+  behaviour. §16.1, §16.3, §16.5, §16.8 and §16.10 are still untouched.
 
 ## Out of scope
 

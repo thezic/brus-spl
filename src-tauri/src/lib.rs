@@ -1,83 +1,45 @@
+pub mod bridge;
 pub mod capture;
 pub mod metrics;
 pub mod session;
 pub mod settings;
 pub mod weighting;
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::Ordering;
+use std::time::Instant;
 
 use serde::Serialize;
 use tauri::Manager;
 
-/// Everything the app owns. At this tier that is capture, the settings, and the temporary
-/// readout's own counters; the metrics ring and the 10 Hz tick arrive with `b05`.
-struct AppState {
-    capture: Arc<capture::Capture>,
-    /// The four settings and their file. Behind a `Mutex` rather than owned by the tick thread
-    /// because the commands `b05` adds write to it while the tick reads it, and a write goes to
-    /// disk (spec §10) — not something to do from an audio path, and this is not one.
-    settings: Mutex<settings::SettingsStore>,
-    /// Blocks drained since startup. Lives here rather than in `capture` because it counts
-    /// what the *display* side has seen, which is the number worth watching on a device.
-    blocks: AtomicU64,
-}
+use bridge::AppState;
 
-/// **Temporary.** The whole readout for this tier, replaced wholesale by the real screen in
-/// `b06`.
+/// **Temporary.** The facts the tick has no place for, replaced wholesale by the real screen in
+/// `b06` — after which the same detail is only in Xcode's log, which is what `b08` reads.
 ///
-/// It exists because `println!` does not reach `devicectl … --console` (spec §2.2), so the
-/// only way to see whether the phone is capturing is to put it on the phone's screen.
+/// It exists because `println!` does not reach `devicectl … --console` (spec §2.2), so the only
+/// way to see what rate, channel count and mode the phone granted is to put them on its screen.
+/// Everything a *meter* paints is in the tick and deliberately not repeated here.
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Readout {
+struct Diagnostics {
     capture: capture::CaptureState,
-    /// Cumulative blocks drained.
+    /// Cumulative blocks the tick has deposited.
     blocks: u64,
     /// Blocks lost to queue overflow — lost coverage, never a wrong number (spec §6.10).
     dropped: u64,
-    /// Level of the blocks drained by *this* call, through the selected weighting, **with the
-    /// calibration offset applied post-log** (spec §8.2). `None` when no block arrived or the
-    /// power was exactly zero — the same refusal spec §6.9 and §16.7 make, and the reason a
-    /// denied microphone shows nothing rather than a very quiet room.
-    level: Option<f64>,
-    /// `dB` or `dBFS`, travelling **with** the value so it can never be painted under the wrong
-    /// label (spec §9.2). The real tick does the same.
-    unit: settings::Unit,
-    /// The four settings, in the shape spec §9.1 puts them on the wire — snake_case, unlike the
-    /// rest of this temporary struct.
-    settings: settings::Settings,
     last_error: Option<String>,
 }
 
-/// **Temporary.** Polled by `App.vue` until `b05` replaces polling with the 10 Hz tick event.
+/// **Temporary.** Polled slowly by `App.vue` beside the tick; deleted with the readout in `b06`.
+///
+/// Note what it no longer does: **draining belongs to the tick thread alone**. Two drainers would
+/// split the audio between them and neither number would mean anything.
 #[tauri::command]
-fn capture_readout(state: tauri::State<'_, AppState>) -> Readout {
-    let mut sum_sq = 0.0f64;
-    let mut n: u64 = 0;
-    let drained = state.capture.drain(|summary| {
-        sum_sq += summary.sum_sq;
-        n += summary.n as u64;
-    });
-    let blocks = state.blocks.fetch_add(drained as u64, Ordering::Relaxed) + drained as u64;
-
-    // 10·log₁₀ of the mean square: the same dBFS convention the meter and the FFT both use
-    // (spec §16.4), so a full-scale sine reads −3.01 dBFS rather than 0.
-    let raw = if n > 0 && sum_sq > 0.0 {
-        Some(10.0 * (sum_sq / n as f64).log10())
-    } else {
-        None
-    };
-
-    let settings = state.settings.lock().unwrap().settings();
-
-    Readout {
+fn capture_diagnostics(state: tauri::State<'_, AppState>) -> Diagnostics {
+    Diagnostics {
         capture: state.capture.state(),
-        blocks,
+        blocks: state.blocks.load(Ordering::Relaxed),
         dropped: state.capture.dropped(),
-        level: settings.calibrated(raw),
-        unit: settings.unit(),
-        settings,
         last_error: state.capture.last_error(),
     }
 }
@@ -135,16 +97,39 @@ pub fn run() {
             let loaded = store.settings();
             eprintln!("settings: {loaded:?}");
 
+            // The ring starts at the *preferred* rate and is corrected on the first tick that
+            // sees a running stream — the granted rate is only known on the capture thread, and
+            // nothing can have been deposited before it is, so the correction is exact.
+            //
+            // The two settings the ring holds a copy of are pushed in here rather than left to
+            // coincide with its own defaults: `settings.rs` and `metrics.rs` both default to 60 s
+            // and both to `S`, and relying on that would silently mis-slice the window for anyone
+            // whose `settings.json` says otherwise.
+            let mut metrics = metrics::Metrics::new(session::PREFERRED_SAMPLE_RATE, Instant::now());
+            metrics.set_window_s(loaded.window_s);
+            metrics.set_time_weighting(loaded.time_weighting);
+
             // Capture starts itself on its own thread and reports its own state, so nothing
             // here waits on the microphone permission prompt.
-            app.manage(AppState {
-                capture: capture::Capture::start(loaded.weighting),
-                settings: Mutex::new(store),
-                blocks: AtomicU64::new(0),
-            });
+            app.manage(AppState::new(
+                capture::Capture::start(loaded.weighting),
+                metrics,
+                store,
+            ));
+
+            // After `manage`: the tick thread looks the state up on its first pass, 100 ms later.
+            bridge::spawn(app.handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![capture_readout])
+        .invoke_handler(tauri::generate_handler![
+            bridge::set_weighting,
+            bridge::set_time_weighting,
+            bridge::set_window_length,
+            bridge::set_calibration_from_reference,
+            bridge::set_calibration_offset,
+            bridge::reset,
+            capture_diagnostics
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
