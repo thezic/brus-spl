@@ -1,4 +1,5 @@
 pub mod capture;
+pub mod metrics;
 pub mod session;
 pub mod weighting;
 
@@ -30,9 +31,9 @@ struct Readout {
     blocks: u64,
     /// Blocks lost to queue overflow — lost coverage, never a wrong number (spec §6.10).
     dropped: u64,
-    /// Unweighted (Z) level of the blocks drained by *this* call, in dBFS. `None` when no
-    /// block arrived or the power was exactly zero — the same refusal spec §6.9 and §16.7
-    /// make, and the reason a denied microphone shows nothing rather than a very quiet room.
+    /// C-weighted level of the blocks drained by *this* call, in dBFS. `None` when no block
+    /// arrived or the power was exactly zero — the same refusal spec §6.9 and §16.7 make, and
+    /// the reason a denied microphone shows nothing rather than a very quiet room.
     dbfs: Option<f64>,
     last_error: Option<String>,
 }

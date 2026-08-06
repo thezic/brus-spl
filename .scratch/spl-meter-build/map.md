@@ -152,8 +152,9 @@ difference matter (spec §7).
   the renormalisation rather than the filter.
 
 - [Session, capture and the idle timer](issues/b01-session-capture-and-the-idle-timer.md)
-  — **Built and verified everywhere the hardware allowed; still `claimed`, because it never ran on the
-  phone.** The spike is deleted whole and `cargo build` produces one binary. **The framework-link
+  — **Built and verified everywhere the hardware allowed, and resolved on that basis; the phone half is
+  now [the Tier 1 device pass](issues/b08-tier-1-device-pass.md)'s.** The spike is deleted whole and
+  `cargo build` produces one binary. **The framework-link
   canary passed** — `tauri ios build --debug` reached `BUILD SUCCEEDED` with zero `Undefined symbols`,
   which is the one thing no `cargo check` could ever have told us, and it now covers `objc2-ui-kit`
   too: the idle timer needed **no `bundle.iOS.frameworks` entry and no regeneration**, asserted by
@@ -168,9 +169,33 @@ difference matter (spec §7).
   `unavailable`. Non-`f32` input is refused rather than converted in the callback, which §3.3 forbids
   there. Nothing in spec §16 was vetoed — `rtrb` degrades into lost coverage exactly as §6.10 wants,
   and §16.9's channel-0 rule cost one `chunks_exact` and never fired on the mono route.
-  **Outstanding: `devicectl install` + `launch`.** The paired iPhone 14 Pro reports `unavailable`, so
-  the remaining risk is launch-time rather than link-time — which is
-  [the Tier 1 device pass](issues/b08-tier-1-device-pass.md)'s to close anyway.
+  **`devicectl install` + `launch` never ran** — the paired iPhone 14 Pro reports `unavailable` — so the
+  remaining risk is launch-time rather than link-time, and it now sits as the first item of
+  [the Tier 1 device pass](issues/b08-tier-1-device-pass.md) rather than holding this ticket open.
+  Nothing has yet run on the phone.
+
+- [The metrics pipeline](issues/b03-the-metrics-pipeline.md)
+  — **Built and green: 18 synthetic tests, `cargo test` 39 overall, and verified against two minutes
+  of live audio as well as against the table.** Spec §6 needed no correction. What did need one is
+  **§16.7's rationale, though not its rule** — it justifies the not-positive clause with "exact-zero
+  blocks arrive, so the staleness rule never fires", which presumes a zero-power block counts as an
+  arrival. It must not: advance the smoother with `x² = 0` and NOW *decays* rather than vanishing,
+  taking **~11 minutes at `S`** to underflow far enough for the clause to fire — the exact
+  plausible-wrong-unlabelled number §6.9 exists to prevent, and a contradiction of this ticket's own
+  `--` beside `0s of 60s`. §6.3's *"zero power is the absence of a measurement, not a quiet one"*
+  settles it: such a block is discarded **whole**, is **not an arrival**, and the 200 ms rule fires in
+  a fifth of a second. The clause itself stays and is not redundant — `smoothed` is exactly `0.0`
+  before the first block, which is what would otherwise put `10·log₁₀(0)` on the wire. **The module
+  never reads the clock**; every entry point takes `now`, which is what makes a 130 s session with a
+  60 s hole a microsecond-long test with no hardware and no fake-clock trait. A **mutation pass found
+  a real hole in its own tests**: `the_ring_keeps_moving_with_no_audio_at_all` passes on a ring that
+  never clears a slot, because at 70 s nothing has wrapped — it was testing the window's *slicing*,
+  not its *clearing*, a distinction only a session longer than the 120 s ring exposes, i.e. a talk.
+  Live, coverage climbed 1 s per second to **60.10 and held at 60.0 ± 0.1**, L_eq settled near −45 dB
+  moving ~0.1 dB/s — §6.10's "once a second on its own", measured — and the max hold rose monotonically
+  and never fell. **The weighting seam is closed**: the callback runs `chain.process(x)` at `C`,
+  derived from the granted rate. Swapping the chain live, and §6.11's filter-state zeroing, are left
+  to `b04`, which owns the setting that drives them.
 
 ## Not yet specified
 
@@ -205,6 +230,10 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   and eight smaller calls were made by the spec rather than by any ticket, and listed there
   expressly so they could be vetoed in review rather than discovered in code. A ticket that
   finds one of them wrong should say so in its resolution rather than working around it.
+  **Nothing is vetoed so far.** §16.2, §16.4, §16.7 and §16.9 have met code and all four stand —
+  though `b03` found §16.7's *rationale* unreliable while its rule holds, which is the one case
+  where reading the justification rather than the clause would have produced wrong behaviour.
+  §16.1, §16.3, §16.5, §16.6, §16.8, §16.10 and §16.11 are still untouched.
 
 ## Out of scope
 

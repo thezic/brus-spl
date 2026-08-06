@@ -1,7 +1,8 @@
 //! The cpal input stream, and the one queue that crosses out of the audio callback.
 //!
 //! The callback does the minimum spec §3.3 permits and nothing else: convert f32 → f64 at the
-//! block boundary, take channel 0, run the weighting chain, sum `p²` and `n`, and push one
+//! block boundary, take channel 0, run the weighting chain (`C` by default, spec §11.4), sum
+//! `p²` and `n`, and push one
 //! [`BlockSummary`] per block into a bounded lock-free SPSC queue. No locks, no allocation, no
 //! logging, no `Mutex`. Everything downstream of that queue runs on the display side.
 //!
@@ -20,6 +21,7 @@ use rtrb::{Consumer, RingBuffer};
 use serde::Serialize;
 
 use crate::session;
+use crate::weighting;
 
 /// One audio block, reduced to the only three things the metrics ring needs.
 ///
@@ -212,6 +214,22 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
     let stride = config.channels.max(1) as usize;
     let dropped = Arc::clone(&capture.dropped);
 
+    // The weighting chain lives in the callback and is derived here, from the **granted** rate
+    // — this is the only place that rate is known, and every coefficient depends on it. `C` is
+    // the default (spec §11.4); the setting that changes it, and the filter-state zeroing spec
+    // §6.11 requires when it does, belong to `b04`.
+    //
+    // `WeightingChain::new` panics below 2 kHz, which on the capture thread would take the app
+    // down silently, so the refusal is explicit and names the rate.
+    if (config.sample_rate as f64) <= 2000.0 {
+        return Err(format!(
+            "input rate {} Hz puts the 1 kHz weighting reference at or above Nyquist",
+            config.sample_rate
+        ));
+    }
+    let mut chain =
+        weighting::WeightingChain::new(config.sample_rate as f64, weighting::Weighting::C);
+
     let last_error = Arc::clone(&capture.last_error);
     let error_callback = move |err: cpal::Error| {
         // Not the audio thread: cpal delivers this on a notification queue.
@@ -234,14 +252,11 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
                     // microphone in a venue delivers.
                     let x = frame[0] as f64;
 
-                    // ─── the weighting seam ────────────────────────────────────────────
-                    // `b03` replaces this line with the selected chain from `b02`:
-                    //     let y = chain.process(x);
-                    // Until then the sum is unweighted, which is Z — a real mode, not a stub.
-                    // No DC blocker here or there: the A and C filters are themselves
+                    // ─── the weighting seam, closed by `b03` ───────────────────────────
+                    // No DC blocker here or anywhere: the A and C filters are themselves
                     // high-passes, f64 removes the precision motive, and the FFT tap wants
                     // the DC (spec §3.3).
-                    let y = x;
+                    let y = chain.process(x);
                     // ───────────────────────────────────────────────────────────────────
 
                     sum_sq += y * y;
