@@ -57,8 +57,10 @@ any work.
 **Facts about this repo that bite, all confirmed:** see `CLAUDE.md`. The three that will
 actually cost a day if forgotten — the iOS target must link `AVFAudio`/`AudioToolbox`/
 `CoreAudio` via `bundle.iOS.frameworks`; never run any `tauri ios` command with `FORCE_COLOR`
-set; and `println!` does **not** reach `devicectl … --console`, so on-device diagnostics have
-to be on screen.
+set; and `println!` does **not** reach `devicectl … --console`. That last one was read for two
+tickets as *on-device diagnostics have to be on screen*, and `b08` found it is only half true:
+**`idevicesyslog` carries Rust's `eprintln!` verbatim, tagged `[stderr]`**, so the log is readable
+from a plain shell after all.
 
 **Commits:** one per ticket, to `main`, following the existing `Resolve ticket NN` pattern.
 There is no remote.
@@ -315,9 +317,10 @@ difference matter (spec §7).
   ask the supervisor to tear down the stream it had just built, one rebuild per tick forever. Two
   things about cpal came out of reading it rather than running it: **`DeviceChanged`'s doc advice is
   wrong for this instrument** — "no rebuild is required" is true of the samples and false of
-  coefficients derived from the build-time rate — and **neither CoreAudio backend raises it at all**,
-  only WASAPI and PipeWire, which is `11` probe 2's silence confirmed from the source and the reason
-  the error path is defence while the health check is the mechanism. Finding 3 is two opposite
+  coefficients derived from the build-time rate. (It also claimed *neither CoreAudio backend raises
+  it at all*. **That was wrong**, from a grep truncated at twenty lines;
+  [`b08`](issues/b08-tier-1-device-pass.md) corrects it — cpal's iOS backend maps route changes onto
+  error kinds, so the error callback is a live path there rather than defence.) Finding 3 is two opposite
   mistakes one line apart: the recovery path must **not** re-ask for the microphone (it blocks on the
   main queue, twice a second, for the length of a Siri call) and must **not** stop asking either — so
   it is `Initial` until a build has *succeeded*, not until one has been attempted, or a first failure
@@ -340,7 +343,7 @@ difference matter (spec §7).
   notification is **the fast path, not the mechanism** — the right way round, since the reliable
   trigger is the one that cannot fail to arrive. `objc2-foundation` needed **no
   `bundle.iOS.frameworks` entry and no regeneration**, asserted by building. Untested and said so:
-  the retry loop, and route-change recovery, which stays in the fog for want of headphones.
+  the retry loop, and route-change recovery — half of which `b08` then caught by accident.
 
 ## Not yet specified
 
@@ -374,11 +377,14 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   all, so macOS reported `capturing` throughout and **cannot** produce the other two. The
   precedence — permission before stream, because a denied microphone still builds a stream — has
   a unit test standing in for a device.
-- **Route-change recovery.** Probe 3 was never run for want of headphones. Do it with
-  headphones to hand. `b07` built the path it would exercise — plug and unplug mid-measurement,
-  watching `Capture::builds` and the sample rate — and found that **neither CoreAudio backend
-  raises cpal's `DeviceChanged` at all**, so a route change that iOS does not announce is caught
-  by the health check or not at all.
+- **Route-change recovery, now half answered.** `b08` caught a **real** route change on device —
+  `StreamInvalidated: Audio route changed`, raised as the route settles a few tens of ms after
+  launch — and `b07`'s supervisor rebuilt from it in 70 ms without being asked. So the mechanism is
+  demonstrated. What is still unrun is probe 3's actual gesture, a headset plugged and unplugged
+  **mid-measurement**, which is a different leg: cpal's iOS backend maps `OldDeviceUnavailable` to
+  `DeviceChanged`, and that path has never fired here. It also moves the sample rate, which is the
+  half the launch-time event could not exercise. Do it with headphones to hand, watching
+  `Capture::builds` and the rate in the log.
 - **The 200 ms staleness threshold is reasoned, not measured** (§6.9). iOS drain jitter was
   never characterised — `b05` measured the *tick* at a flat 10.00 Hz, but on macOS, where the
   drain has nothing to be jittery about. If `--` flickers in practice, that number is the dial.

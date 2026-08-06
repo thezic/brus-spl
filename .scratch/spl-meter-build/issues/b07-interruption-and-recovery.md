@@ -93,16 +93,24 @@ meter permanently at `--` and the log a wall of successful builds. The rule is n
 `needs_recovery(state, channels)`, guarded on `Running`, and it is the only part of item 4 that
 can be tested anywhere but on a phone.
 
-**Finding 2 — cpal's own advice about `DeviceChanged` is wrong for this instrument, and neither
-CoreAudio backend raises it anyway.** cpal 0.18.1 documents that kind as *"the stream remains
+**Finding 2 — cpal's own advice about `DeviceChanged` is wrong for this instrument.** cpal 0.18.1 documents that kind as *"the stream remains
 active and no rebuild is required"* — true of the samples, false here: the weighting coefficients
 and the published `CaptureFacts` are both derived from the rate read back **when the stream was
 built**, so a reroute cpal absorbs silently leaves them describing the old route. Item 5's *any*
-is therefore right as written and is honoured without triage. Reading the crate also turned up
-independent confirmation of `11` probe 2 from the source rather than from a measurement:
-`DeviceChanged` is raised **only by the WASAPI and PipeWire hosts**. Neither CoreAudio backend has
-a route-change error path at all — so on this app's only two platforms the error callback is
-defence, and the health check is the mechanism.
+is therefore right as written and is honoured without triage.
+
+**Corrected by [`b08`](b08-tier-1-device-pass.md), and the correction matters.** This ticket also
+claimed `DeviceChanged` is raised *only* by the WASAPI and PipeWire hosts and that neither CoreAudio
+backend has a route-change error path at all. **That is wrong**, and it came from a grep truncated
+at twenty lines read as though it were the whole answer. cpal 0.18.1's iOS backend carries a
+`session_event_manager` observing `AVAudioSessionRouteChangeNotification`, which maps reasons onto
+kinds: `OldDeviceUnavailable` (a headset unplugged) → **`DeviceChanged`**,
+`CategoryChange`/`Override`/`RouteConfigurationChange` → `StreamInvalidated`,
+`NoSuitableRouteForCategory` → `DeviceNotAvailable`. The error callback is therefore a **live path
+on iOS**, not defence, and `b08` watched it fire. What cpal genuinely does not observe is
+`AVAudioSessionInterruptionNotification` — it watches route changes and media-services loss/reset
+and nothing else — so item 2's observer stays forced rather than chosen, and probe 2's silence is
+explained precisely instead of over-generalised.
 
 **Finding 3 — the recovery path must not re-ask for the microphone, and must not stop asking
 either.** Two opposite mistakes, one line apart. `Activation::Recovery` skips
@@ -189,10 +197,13 @@ and half a second is a fifth of the hole an interruption already costs.
 here:** the app launches, captures, and the numbers **track sound sensibly** — a quiet room reads
 much lower than someone talking at it. First evidence that the capture path works on the phone at
 all. It is *not* evidence about `Measurement` mode, which is a 21 dB fixed gain that would look
-entirely plausible if it silently failed; that check still needs the log, and so still needs Xcode.
+entirely plausible if it silently failed — [`b08`](b08-tier-1-device-pass.md) answered that one
+separately, and found a way to read the log that does not need Xcode at all.
 
 **Untested and said so.** The retry loop has no test, because a build failure cannot be forced
 without taking the hardware away. `Activation::Recovery`'s skipped permission prompt ran on device
 but was never *observed* — it is inferred from the recovery working at all. And **route-change
-recovery stays in the fog**: probe 3 was not run, for want of headphones. It wants a
-plug-and-unplug mid-measurement, watching `builds()` and the sample rate.
+recovery is half out of the fog**: [`b08`](b08-tier-1-device-pass.md) caught a real
+`StreamInvalidated: Audio route changed` at launch and the supervisor recovering from it in 70 ms.
+Probe 3's actual gesture — a headset plugged and unplugged mid-measurement — is still not run for
+want of headphones, and it is the leg that raises `DeviceChanged` rather than `StreamInvalidated`.

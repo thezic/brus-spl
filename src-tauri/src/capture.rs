@@ -338,10 +338,18 @@ impl Capture {
 /// how they follow the route. The cost of the extra rebuild is a fraction of a second of coverage;
 /// the cost of skipping it is every number afterwards being filtered for the wrong rate.
 ///
-/// It is defence rather than the mechanism, though: **neither CoreAudio backend raises
-/// `DeviceChanged` at all** — only WASAPI and PipeWire do — and `11` probe 2 measured an
-/// interruption that reached this callback not once. The health check is what actually catches
-/// things on the phone.
+/// **This callback is a live path on iOS, and `b08` watched it fire.** cpal 0.18.1's iOS backend
+/// carries a `session_event_manager` that observes `AVAudioSessionRouteChangeNotification` and maps
+/// the reasons onto error kinds — `OldDeviceUnavailable` (a headset unplugged) to `DeviceChanged`,
+/// `CategoryChange`/`Override`/`RouteConfigurationChange` to `StreamInvalidated`,
+/// `NoSuitableRouteForCategory` to `DeviceNotAvailable`. On device the route settles a few tens of
+/// ms after launch and delivers `StreamInvalidated: Audio route changed`; the supervisor rebuilt
+/// and was running again 70 ms later, before anything had been measured.
+///
+/// What cpal does **not** observe is `AVAudioSessionInterruptionNotification` — it watches route
+/// changes and media-services loss/reset and nothing else — which is why spec §4.2 item 2's
+/// observer is forced rather than chosen, and why `11` probe 2's Siri interruption reached this
+/// callback not once. Route changes announce themselves; interruptions do not.
 ///
 /// Split out of [`build`] so it can be tested with a synthetic `cpal::Error`, which is the only
 /// one of the three triggers that can be fired anywhere but on a device.
@@ -885,10 +893,17 @@ mod tests {
     /// instrument. The weighting coefficients and the published `CaptureFacts` are both derived
     /// from the rate read back when the stream was built, so a reroute that cpal handles silently
     /// still leaves them describing the old route. Rebuilding is how they follow it.
+    ///
+    /// The three kinds are not arbitrary: they are exactly what cpal's iOS `session_event_manager`
+    /// raises for a route change — `DeviceChanged` for a headset unplugged, `StreamInvalidated` for
+    /// a category or configuration change, `DeviceNotAvailable` when no route suits the category.
+    /// `b08` watched the second of them arrive on device at launch and the supervisor recover from
+    /// it, so this table is the device's own behaviour rather than a guess at it.
     #[test]
     fn any_stream_error_asks_for_a_rebuild_and_records_itself() {
         for kind in [
             cpal::ErrorKind::DeviceChanged,
+            cpal::ErrorKind::StreamInvalidated,
             cpal::ErrorKind::DeviceNotAvailable,
             cpal::ErrorKind::InvalidInput,
         ] {
