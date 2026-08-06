@@ -284,6 +284,15 @@ difference matter (spec §7).
   (`minmax(23.5rem, 24rem)`) rather than by the picture. Finding 3: **the armed Reset is cyan, and the
   spec is right** — red is the alarm colour §11.8 rules out in the same sentence that names the armed
   Reset, and the accent is cool so the inferno ramp can never lend it the meaning of a *level*.
+  **Corrected afterwards by `b07`'s device pass, and the correction is about the method:** the
+  calibration fields **could not be typed into at all on a comma-locale phone**. iOS gives an
+  `inputmode="decimal"` keypad the *locale's* separator and no other, so `Number("68,3")` is `NaN`
+  and both buttons sat permanently disabled with nothing on screen — the silent no-op this ticket's
+  own `apply` exists to prevent, reached from the one direction that bypasses it, and a break of
+  spec §8.5's sticky-note recovery path rather than an inconvenience. **Both halves of this ticket's
+  pass ran against a Mac keyboard, which has a `.` key**, so no amount of browser or dev-window
+  driving could have found it. `typed()` now takes either separator and refuses two rather than
+  guessing.
   Two smaller calls: coverage is **rounded rather than floored**, because `b03`'s 60.0 ± 0.1 makes
   flooring flicker `59s`/`60s` on a full window; and a command's answer **outranks the tick for
   120 ms**, since a tick already in flight arrives carrying the old settings and snaps the segment

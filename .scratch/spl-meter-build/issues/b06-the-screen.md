@@ -196,3 +196,26 @@ nothing here can stop one. Rust's side of that path is `b03`'s and tested. The s
 seen in portrait; at phone-landscape height it scrolls, which is the mechanism rather than an
 observation. And the reserved picture band is **empty, not outlined** — Tier 2 is the droppable
 tier, so an outlined placeholder is the thing that would ship.
+
+## Correction, from `b07`'s device pass
+
+**The calibration fields could not be typed into at all on a comma-locale phone**, which is the
+one class of defect this ticket's method was structurally unable to find: both halves of the pass
+ran against a Mac keyboard, which has a `.` key.
+
+iOS gives an `inputmode="decimal"` keypad the **locale's** decimal separator and no other — so on
+that phone there is no `.` at all, `Number("68,3")` is `NaN`, and `typed()` returned `null` for
+every decimal the reader could actually produce. Match and Set then sat permanently disabled with
+nothing on screen to say why: precisely the silent no-op `apply`'s own doc comment calls *the worst
+of the three possible behaviours*, arrived at from the one direction that bypasses it.
+
+It is not merely awkward. It **breaks spec §8.5's recovery path outright** — the offset is meant to
+be recoverable by reading it off a sticky note and retyping it, which free provisioning's weekly
+re-sign makes a real routine rather than a hypothetical, and a keypad that cannot type the number
+the app displays makes that impossible.
+
+`typed()` now accepts either separator and refuses **two** rather than guessing (`1,234` is
+ambiguous between a thousands group and a decimal). Display stays on `.` everywhere: a hero reading
+`68.3` above a field reading `68,3` would be a worse inconsistency than the one being fixed. Checked
+against 17 cases including `683`, which still reaches the backend and is still rejected with its
+reason on screen, then confirmed on the device.

@@ -53,9 +53,27 @@ const offsetField = computed(
     (props.settings.offset_db !== null ? props.settings.offset_db.toFixed(1) : ""),
 );
 
+/**
+ * What was typed, as a number — accepting **either decimal separator**.
+ *
+ * Found on the phone and not findable anywhere else: iOS gives an `inputmode="decimal"` keypad
+ * the *locale's* separator and no other, so on a comma-locale device there is no `.` key at all
+ * and `Number("68,3")` is `NaN`. Both fields then stay permanently disabled with nothing on
+ * screen to say why — the silent no-op `apply` below exists to avoid, arrived at from the one
+ * direction that skips it. And it does not merely inconvenience the calibration gesture, it
+ * **breaks spec §8.5's recovery path**: the offset is recoverable by reading it off a sticky note
+ * and retyping it, which is impossible if the keypad cannot type the number the app displays.
+ *
+ * Two separators are refused rather than guessed at: `1,234` is ambiguous between a thousands
+ * group and a decimal, and nothing here needs four digits before the point. Display stays on `.`
+ * throughout — this is an instrument, and a hero reading `68.3` over a field reading `68,3` would
+ * be a worse inconsistency than the one being fixed.
+ */
 function typed(text: string): number | null {
-  const value = Number(text);
-  return text.trim() !== "" && Number.isFinite(value) ? value : null;
+  const trimmed = text.trim();
+  if (trimmed === "" || (trimmed.match(/[.,]/g)?.length ?? 0) > 1) return null;
+  const value = Number(trimmed.replace(",", "."));
+  return Number.isFinite(value) ? value : null;
 }
 
 const reference = computed(() => typed(referenceDraft.value));
