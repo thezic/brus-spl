@@ -51,8 +51,12 @@ xcrun devicectl device process launch --device <udid> net.thezic.decibel-meter
 - **Settings persist across a relaunch**, and across an install-over-the-top.
 - **An interruption recovers**, if [`b07`](b07-interruption-and-recovery.md) landed.
 
-Diagnostics must be **on screen or in Xcode's log** — `println!` does not reach
-`devicectl … --console`.
+Diagnostics are now **only in Xcode's log** — `println!` does not reach `devicectl … --console`,
+and [the screen](b06-the-screen.md) deleted the temporary `capture_diagnostics` readout that stood
+in for it, because spec §3.1 keeps the session read-back out of the UI. **So the loop above cannot
+answer the `Measurement`-mode question**, which is this ticket's highest-consequence check: launch
+from Xcode for that one, or re-add a throwaway readout — five minutes, and it need not survive the
+ticket.
 
 ## Done when
 

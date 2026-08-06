@@ -258,6 +258,40 @@ difference matter (spec §7).
   said so: the drain-and-discard inside `set_weighting`, which needs a producer an unstarted
   `Capture` cannot have, and the snake_case **argument** names, which only the live press exercises.
 
+- [The screen](issues/b06-the-screen.md)
+  — **Built, and every Done-when item driven rather than described; spec §11 needed no correction.**
+  Five components plus `src/display.ts`, 91 tests still green. The dev window **cannot be clicked
+  from an agent session** — no accessibility grant — which turned this ticket's own trap (*drive the
+  input-state line from a stubbed value*) into the method for the whole pass: a fake
+  `__TAURI_INTERNALS__` so the real components could be clicked in Chrome at phone widths, and a timed
+  script pressing the six commands against the **real Rust backend** in the dev window. Each caught
+  what the other could not — the browser exercised the sheet (the `683` typo rejected *with its reason
+  on screen*, `68.3` matched to a `106.4` offset, the armed Reset, and the `denied` line macOS cannot
+  produce), the dev window proved the **labels** against real settings, where one frame reading
+  `NOW · A · fast` / `LAeq 120s` / `2s of 120s` / `dB` is four commands confirmed at once.
+  **Finding 1 is the one worth carrying: the hero size is a measurement, and guessing it was wrong by
+  a whole rem in the dangerous direction.** §11.5's *size for the widest state* does not say what that
+  costs, and the arithmetic is not the one a reader would do — `−108.4` is **3.09 em** in the system
+  sans, so a flat 7.5rem renders it at **371 px and overflows a 375 px phone**, while the 6.5rem that
+  fits one throws away 15 % of the glyph height on a 430 px phone. Neither is a size; the constraint
+  is `font-size ≤ (100vw − 32px)/3.09`, now `min(7.5rem, calc(31vw − 12px))`, checked at four widths.
+  It is invisible at the desk — the app is calibrated a minute after launching — and it is the one
+  screen shown before anyone has calibrated anything. Finding 2 is its consequence in the wide
+  reflow, where `vw` is the *window* and not the column, so the left column is sized by the hero
+  (`minmax(23.5rem, 24rem)`) rather than by the picture. Finding 3: **the armed Reset is cyan, and the
+  spec is right** — red is the alarm colour §11.8 rules out in the same sentence that names the armed
+  Reset, and the accent is cool so the inferno ramp can never lend it the meaning of a *level*.
+  Two smaller calls: coverage is **rounded rather than floored**, because `b03`'s 60.0 ± 0.1 makes
+  flooring flicker `59s`/`60s` on a full window; and a command's answer **outranks the tick for
+  120 ms**, since a tick already in flight arrives carrying the old settings and snaps the segment
+  back for a frame. **`capture_diagnostics` is deleted** as `b05` intended and `session.rs` §3.1
+  already required — with one consequence named rather than buried: the **`Measurement`-mode
+  read-back, the highest-consequence check in the effort at 21 dB silently**, is now only in the log,
+  so [the Tier 1 device pass](issues/b08-tier-1-device-pass.md) reads it from Xcode rather than from
+  `devicectl`. Not verified live and said so: `--` was rendered at its real size and is **not** a
+  redaction bar, but was never produced by a stream that actually stopped, because nothing here can
+  stop one.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
@@ -273,7 +307,9 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   muted `--` at hero size. Carried unanswered from `07` through `09` through `10`; if the
   answer is "no" it is a correction to the band count or the ~200 px height, so it wants
   answering *before* [the spectrogram canvas](issues/b11-the-spectrogram-canvas.md) rather
-  than after.
+  than after. `b06` narrowed one half of it: on a desk the `--` reads as a muted absence rather
+  than a redaction bar, and the hero is now as large as the widest state permits at any phone
+  width — but *at a desk* is not the question, and the band legibility is untouched.
 - **`get_spectrogram` in a WKWebView on the phone.** 276 KB of JSON at a 120 s span parses in
   a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
   the command, aggregating in Rust — costs the single-aggregator property, so it is a trade

@@ -2,7 +2,7 @@
 
 Parent: [SPL Meter Build](../map.md)
 Type: build
-Status: open
+Status: resolved
 Blocked by: [`b05`](b05-the-bridge-and-the-tick.md)
 
 ## Build
@@ -125,3 +125,74 @@ stream stops and it does **not** look like a redaction bar; `dBFS` shows before 
 entry stores an offset that moves all three numbers at once; the armed Reset clears the window
 and the max hold. The portrait layout width-caps in a tall window and reflows at 800×600.
 `npm run build` typechecks.
+
+## Resolution
+
+**Built, and every Done-when item driven rather than described.** `App.vue` plus `Hero`,
+`Secondary`, `InputLine`, `Picker` and `SettingsSheet` under `src/components/`, with the four
+strings that sit beside a number in `src/display.ts`. Spec §11 needed no correction. 91 tests
+still green, `npm run build` typechecks, clippy clean, and the iOS `--lib` check passes.
+
+**The dev window cannot be clicked from an agent session** — no accessibility grant, so no
+synthesised events — which turned the trap's own suggestion (*drive the input-state line from a
+stubbed value*) into the method for the whole pass. Two temporary harnesses, both deleted before
+the commit: a fake `window.__TAURI_INTERNALS__` so the real components could be clicked in Chrome
+at phone widths, and a timed script that pressed the six commands against the **real Rust
+backend** in the dev window. The split matters, because each caught what the other could not. The
+browser is where the sheet was exercised — the `683` typo rejected with its reason on screen,
+`68.3` matched, the offset landing at `106.4` and becoming editable, the armed Reset, and all
+three input-state lines including the `denied` one macOS cannot produce. The dev window is where
+the **labels** were proved against real settings: one frame reading `NOW · A · fast` over
+`LAeq 120s` over `2s of 120s` in `dB` is `set_weighting`, `set_time_weighting`,
+`set_window_length` and `set_calibration_from_reference` all confirmed at once, and the
+`14s → 2s of 120s` step across two frames is Reset clearing the window.
+
+**Finding 1 — the hero size is a measurement, and guessing it was wrong by a whole rem in the
+dangerous direction.** §11.5 says *size the primary number for its widest state*; it does not say
+what that costs, and the arithmetic is not the one a reader would do. `−108.4` is **3.09 em**
+wide in the system sans — not the ~3.3 em a tabular figure set suggests, because SF Pro's display
+digits are ~0.44 em — so a flat `7.5rem` renders it at **371 px** and overflows a 375 px phone,
+while the `6.5rem` that fits a 375 px phone throws away 15 % of the glyph height on a 430 px one.
+Neither is a size; the constraint is `font-size ≤ (100vw − 32px) / 3.09`, and the hero is now
+`min(7.5rem, calc(31vw − 12px))` — checked at 375 / 393 / 402 / 430, clearing by 20 px at the
+tightest. The `min()` cap is what hands over to the 26 rem width cap once the viewport stops being
+the binding constraint. **This is why the widest state is worth stating as a *number*: it is
+invisible at the desk, where the app is calibrated within a minute of launching, and it appears
+on the one screen the app shows before anyone has calibrated it.**
+
+**Finding 2 — the wide reflow's column is sized by the hero, not by the picture.** `vw` in that
+clamp is the whole window, so at 800 px the hero is at its 7.5 rem cap while the column it sits in
+is whatever the grid says. A comfortable-looking `minmax(15rem, 20rem)` would have clipped
+`−108.4` in exactly the state §11.5 named — the reflow's left column is now `minmax(23.5rem,
+24rem)`, which is the 371 px measured above plus slack, leaving ~352 px for the picture at 800×600.
+
+**Finding 3 — the accent's two uses point in opposite directions from the convention, and the
+spec is right.** §11.8 says the accent marks *states and affordances, never levels*, and names the
+armed Reset as one of its two uses. The reflex is a red confirm; red is the alarm colour the same
+sentence rules out. It is cyan — also chosen because the inferno ramp runs black → purple → red →
+orange → yellow, so a warm accent is a colour the picture will later use for a *level* and a cool
+one can never be. Reset is not dangerous anyway: §6.8's window refills honestly in a window length.
+
+**Two smaller calls made rather than left to read naturally.** Coverage is **rounded, not
+floored** — `b03` measured a full window at 60.0 ± 0.1, so flooring flickers `59s`/`60s` forever
+on a window that is genuinely full, which is §11.8's objection to proportional digits arriving by
+a different route. And a command's answer **outranks the tick for 120 ms**: §9.2 says picker
+feedback comes from the return value, but a tick emitted in the moment before the command applied
+is still in flight and arrives carrying the *old* settings, snapping the segment back for one
+frame. Three lines, and Rust stays authoritative either way.
+
+**`capture_diagnostics` is deleted**, as `b05` wrote into its own doc comment. Not a close call
+once `session.rs` was read: its `log_mismatches` already says *nothing here reaches the UI (spec
+§3.1) … acceptable precisely because none of these are conditions the user can act on*. The
+consequence for [the Tier 1 device pass](b08-tier-1-device-pass.md) is real and worth naming — the
+**`Measurement`-mode read-back is the highest-consequence check in the effort** (21 dB, silently)
+and is now only in the log, which under that ticket's `devicectl` loop means launching from Xcode
+instead. Re-adding a temporary readout is a five-minute move if that turns out to be awkward.
+
+**Not verified live, and said so rather than glossed:** the hero's `--` was rendered at its real
+size and typography in the browser and does **not** read as a redaction bar — two clearly separate
+dashes, muted, a third the height — but it was never produced by a *stream that stopped*, because
+nothing here can stop one. Rust's side of that path is `b03`'s and tested. The sheet has only been
+seen in portrait; at phone-landscape height it scrolls, which is the mechanism rather than an
+observation. And the reserved picture band is **empty, not outlined** — Tier 2 is the droppable
+tier, so an outlined placeholder is the thing that would ship.

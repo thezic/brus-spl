@@ -5,44 +5,11 @@ pub mod session;
 pub mod settings;
 pub mod weighting;
 
-use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use serde::Serialize;
 use tauri::Manager;
 
 use bridge::AppState;
-
-/// **Temporary.** The facts the tick has no place for, replaced wholesale by the real screen in
-/// `b06` — after which the same detail is only in Xcode's log, which is what `b08` reads.
-///
-/// It exists because `println!` does not reach `devicectl … --console` (spec §2.2), so the only
-/// way to see what rate, channel count and mode the phone granted is to put them on its screen.
-/// Everything a *meter* paints is in the tick and deliberately not repeated here.
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Diagnostics {
-    capture: capture::CaptureState,
-    /// Cumulative blocks the tick has deposited.
-    blocks: u64,
-    /// Blocks lost to queue overflow — lost coverage, never a wrong number (spec §6.10).
-    dropped: u64,
-    last_error: Option<String>,
-}
-
-/// **Temporary.** Polled slowly by `App.vue` beside the tick; deleted with the readout in `b06`.
-///
-/// Note what it no longer does: **draining belongs to the tick thread alone**. Two drainers would
-/// split the audio between them and neither number would mean anything.
-#[tauri::command]
-fn capture_diagnostics(state: tauri::State<'_, AppState>) -> Diagnostics {
-    Diagnostics {
-        capture: state.capture.state(),
-        blocks: state.blocks.load(Ordering::Relaxed),
-        dropped: state.capture.dropped(),
-        last_error: state.capture.last_error(),
-    }
-}
 
 /// `UIApplication.isIdleTimerDisabled = true`, once at startup, on the main thread.
 ///
@@ -121,14 +88,17 @@ pub fn run() {
             bridge::spawn(app.handle().clone());
             Ok(())
         })
+        // Six, and `b10`'s `get_spectrogram` is the seventh. The temporary `capture_diagnostics`
+        // went with `b06`'s readout: the session read-back was never meant to reach the UI (spec
+        // §3.1) — none of it is a condition the reader can act on — so it lives in the log, which
+        // on a device means Xcode's console rather than `devicectl … --console` (spec §2.2).
         .invoke_handler(tauri::generate_handler![
             bridge::set_weighting,
             bridge::set_time_weighting,
             bridge::set_window_length,
             bridge::set_calibration_from_reference,
             bridge::set_calibration_offset,
-            bridge::reset,
-            capture_diagnostics
+            bridge::reset
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,403 +1,236 @@
 <script setup lang="ts">
-// TEMPORARY READOUT — tickets b01–b05. The real screen is b06, and it replaces this file whole.
+// The one screen — spec §11, ticket `b06`. The picture that belongs in the reserved band is
+// `b11`'s; everything else on the meter is here.
 //
-// This is not a meter layout and is not trying to be one. It exists because `println!` from Rust
-// does not reach `xcrun devicectl … --console` (spec §2.2), so the only way to see what the phone
-// is doing is to put it on the phone's own screen — and, from b05, to have somewhere to press the
-// six commands from.
+//         NOW · C · slow        ← both dimensions; they govern the live number and MAX
+//            65.5
+//             dB
+//    LCeq 60s        MAX
+//      66.5         67.0
+//    60s of 60s                 ← coverage belongs to the L_eq and sits with it
+//    [ the spectrogram goes here — b11 ]
+//              ⋯                ← settings · calibration · reset
 //
-// Everything painted comes from the tick; nothing here is authoritative. The one exception is the
-// two text fields, which are input buffers rather than state (spec §9.2).
+// *The screen leads with the number that moves and keeps the number that is judged permanently
+// in view beside it.*
 //
-// Nothing here is gated on `import.meta.env.DEV`: a device build is a *release* build.
+// **The frontend holds no authoritative state.** Every value painted arrives in a tick. The two
+// refs below are the last snapshot Rust sent, not a model — nothing here computes, defaults or
+// remembers a meter value, and there is deliberately no placeholder before the first tick, which
+// arrives ≤100 ms after the listener registers (spec §9.2).
+//
+// Nothing is gated on `import.meta.env.DEV`: a device build is a *release* build (spec §2.2).
+
 import { onMounted, onUnmounted, ref } from "vue";
-import { invoke } from "@tauri-apps/api/core";
-import {
-  onTick,
-  reset,
-  setCalibrationFromReference,
-  setCalibrationOffset,
-  setTimeWeighting,
-  setWeighting,
-  setWindowLength,
-  type Settings,
-  type Tick,
-  type TimeWeighting,
-  type Weighting,
-  type WindowLength,
-} from "./bridge";
 
-// The facts the tick has no place for. A separate temporary command, polled slowly — the tick is
-// the 10 Hz path and this is a device diagnostic that changes once a session.
-interface SessionFacts {
-  sampleRate: number;
-  inputChannels: number;
-  mode: string;
-  measurementMode: boolean;
-  ioBufferDuration: number;
-  permissionGranted: boolean;
-}
+import Hero from "./components/Hero.vue";
+import InputLine from "./components/InputLine.vue";
+import Secondary from "./components/Secondary.vue";
+import SettingsSheet from "./components/SettingsSheet.vue";
+import { onTick, type Meter, type Settings, type Tick } from "./bridge";
+import { heroLabel } from "./display";
 
-interface CaptureFacts {
-  device: string;
-  sampleFormat: string;
-  sampleRate: number;
-  channels: number;
-  bufferFrames: number | null;
-  session: SessionFacts | null;
-}
+const meter = ref<Meter | null>(null);
+const settings = ref<Settings | null>(null);
+const sheetOpen = ref(false);
 
-type CaptureState =
-  | { state: "starting" }
-  | ({ state: "running" } & CaptureFacts)
-  | { state: "failed"; reason: string };
-
-interface Diagnostics {
-  capture: CaptureState;
-  blocks: number;
-  dropped: number;
-  lastError: string | null;
-}
-
-const DIAGNOSTICS_MS = 1000;
-
-const tick = ref<Tick | null>(null);
-const diagnostics = ref<Diagnostics | null>(null);
-const outcome = ref<string | null>(null);
-const failure = ref<string | null>(null);
-
-// Measured rather than assumed: the Done-when asks for ticks *at 10 Hz*, and a rate that has
-// drifted is the kind of thing that only shows as a sluggish-feeling meter otherwise.
-const ticks = ref(0);
-const rate = ref(0);
-let counted = 0;
-let countedAt = performance.now();
-
-const reference = ref("");
-const offset = ref("");
+/**
+ * How long a command's own answer outranks the tick.
+ *
+ * Picker taps take their feedback from the **command return value**, not the next tick (spec
+ * §9.2) — but a tick emitted in the moment before the command applied can still be in flight and
+ * would arrive carrying the *old* settings, snapping the segment back for one frame. Just over
+ * one tick period covers the crossing.
+ *
+ * This is not the frontend holding state: Rust is authoritative either way, and within 100 ms of
+ * the window closing it has said the same thing itself.
+ */
+const SETTLE_MS = 120;
+let appliedAt = 0;
 
 let unlisten: (() => void) | undefined;
-let timer: number | undefined;
 
-// Command returns exist for feel, not truth (spec §9.2) — so a tap paints its own result at once
-// rather than waiting up to 100 ms. Here that also makes the return value *visible*, which is
-// what the Done-when is asking to see.
-async function run(what: string, command: () => Promise<Settings>) {
-  try {
-    const settings = await command();
-    outcome.value = `${what} → ${JSON.stringify(settings)}`;
-    failure.value = null;
-  } catch (e) {
-    outcome.value = null;
-    failure.value = `${what} → rejected: ${String(e)}`;
-  }
+function paint(tick: Tick) {
+  meter.value = tick.meter;
+  if (performance.now() - appliedAt > SETTLE_MS) settings.value = tick.settings;
 }
 
-const weightings: Weighting[] = ["C", "A", "Z"];
-const timeWeightings: TimeWeighting[] = ["F", "S"];
-const windows: WindowLength[] = [10, 30, 60, 120];
-
-function calibrateFromReference() {
-  const value = Number(reference.value);
-  void run(`set_calibration_from_reference(${reference.value})`, () =>
-    setCalibrationFromReference(value),
-  );
-}
-
-function calibrateFromOffset() {
-  const value = Number(offset.value);
-  void run(`set_calibration_offset(${offset.value})`, () => setCalibrationOffset(value));
-}
-
-async function pollDiagnostics() {
-  try {
-    diagnostics.value = await invoke<Diagnostics>("capture_diagnostics");
-  } catch (e) {
-    failure.value = String(e);
-  }
+function applied(answer: Settings) {
+  settings.value = answer;
+  appliedAt = performance.now();
 }
 
 onMounted(async () => {
-  unlisten = await onTick((payload) => {
-    tick.value = payload;
-    ticks.value += 1;
-    counted += 1;
-    const now = performance.now();
-    if (now - countedAt >= 2000) {
-      rate.value = (counted * 1000) / (now - countedAt);
-      counted = 0;
-      countedAt = now;
-    }
-  });
-  void pollDiagnostics();
-  timer = window.setInterval(() => void pollDiagnostics(), DIAGNOSTICS_MS);
+  unlisten = await onTick(paint);
 });
 
-onUnmounted(() => {
-  unlisten?.();
-  if (timer !== undefined) window.clearInterval(timer);
-});
-
-function db(value: number | null): string {
-  return value != null ? value.toFixed(1) : "--";
-}
+onUnmounted(() => unlisten?.());
 </script>
 
 <template>
-  <main>
-    <p class="tag">b01–b05 — temporary tick readout</p>
+  <main class="screen">
+    <section class="readout">
+      <template v-if="meter && settings">
+        <Hero :label="heroLabel(settings)" :value="meter.inst" :unit="settings.unit" />
+        <InputLine :input="meter.input" />
+        <Secondary :meter="meter" :settings="settings" />
+      </template>
+    </section>
 
-    <!-- `--` rather than a number whenever the level is undefined: exact-zero blocks from a
-         denied microphone must not render as a very quiet room (spec §6.9).
+    <!-- The picture's box, reserved rather than drawn: ~205 px tall with all three gutters
+         budgeted — ~40 px left for frequency labels, ~20 px bottom for the time axis, 58 px
+         right for the colour legend (spec §11.7) — so `b11`'s canvas drops in without a
+         relayout. Left empty rather than outlined, because Tier 2 is the droppable tier and an
+         empty box would be the thing that shipped. -->
+    <div class="picture" aria-hidden="true"></div>
 
-         The unit comes from Rust beside the value rather than being written here, which is spec
-         §9.2's footgun-denial extended from values to labels: `dBFS` while uncalibrated is a
-         correctly-named different quantity, not a wrong SPL (spec §8.6). -->
-    <p class="hero">
-      {{ db(tick?.meter.inst ?? null) }}
-      <span class="unit">{{ tick?.settings.unit ?? "dBFS" }}</span>
-    </p>
+    <!-- One affordance on the whole screen (spec §11.9). -->
+    <button
+      type="button"
+      class="more"
+      aria-label="Settings, calibration and reset"
+      @click="sheetOpen = true"
+    >
+      ⋯
+    </button>
 
-    <template v-if="tick">
-      <dl>
-        <dt>Leq</dt>
-        <dd>{{ db(tick.meter.leq) }} {{ tick.settings.unit }}</dd>
-        <dt>max</dt>
-        <dd>{{ db(tick.meter.max) }} {{ tick.settings.unit }}</dd>
-        <dt>coverage</dt>
-        <dd>{{ tick.meter.coverage_s.toFixed(1) }}s of {{ tick.settings.window_s }}s</dd>
-        <dt>cal slice</dt>
-        <dd>
-          {{ db(tick.meter.cal_leq) }} {{ tick.settings.unit }} over
-          {{ tick.meter.cal_coverage_s.toFixed(1) }}s of 10s
-        </dd>
-        <dt>input</dt>
-        <dd>{{ tick.meter.input }}</dd>
-        <dt>now_slot</dt>
-        <dd>{{ tick.now_slot }} · {{ tick.columns.length }} columns</dd>
-        <dt>ticks</dt>
-        <dd>{{ ticks }} at {{ rate.toFixed(2) }} Hz</dd>
-        <dt>offset</dt>
-        <dd>
-          {{
-            tick.settings.offset_db != null
-              ? `${tick.settings.offset_db.toFixed(1)} dB`
-              : "unset — uncalibrated"
-          }}
-        </dd>
-      </dl>
-
-      <!-- The six commands. b06 replaces all of this with the real sheet; here it exists only so
-           every command can be pressed on the desk and on the phone. -->
-      <div class="controls">
-        <div class="row">
-          <span class="label">weighting</span>
-          <button
-            v-for="w in weightings"
-            :key="w"
-            :class="{ on: tick.settings.weighting === w }"
-            @click="run(`set_weighting(${w})`, () => setWeighting(w))"
-          >
-            {{ w }}
-          </button>
-        </div>
-        <div class="row">
-          <span class="label">time wt</span>
-          <button
-            v-for="t in timeWeightings"
-            :key="t"
-            :class="{ on: tick.settings.time_weighting === t }"
-            @click="run(`set_time_weighting(${t})`, () => setTimeWeighting(t))"
-          >
-            {{ t }}
-          </button>
-        </div>
-        <div class="row">
-          <span class="label">window</span>
-          <button
-            v-for="s in windows"
-            :key="s"
-            :class="{ on: tick.settings.window_s === s }"
-            @click="run(`set_window_length(${s})`, () => setWindowLength(s))"
-          >
-            {{ s }}s
-          </button>
-        </div>
-        <div class="row">
-          <span class="label">reference</span>
-          <input v-model="reference" inputmode="decimal" placeholder="68.3" />
-          <button @click="calibrateFromReference">match</button>
-        </div>
-        <div class="row">
-          <span class="label">offset</span>
-          <input v-model="offset" inputmode="decimal" placeholder="101.4" />
-          <button @click="calibrateFromOffset">set</button>
-        </div>
-        <div class="row">
-          <span class="label">reset</span>
-          <button @click="run('reset()', reset)">clear window + max</button>
-        </div>
-      </div>
-
-      <p v-if="outcome" class="outcome">{{ outcome }}</p>
-      <p v-if="failure" class="err">{{ failure }}</p>
-    </template>
-
-    <template v-if="diagnostics">
-      <p class="state">
-        {{ diagnostics.capture.state }}
-        <span v-if="diagnostics.capture.state === 'failed'">
-          — {{ diagnostics.capture.reason }}
-        </span>
-      </p>
-
-      <dl>
-        <dt>blocks</dt>
-        <dd>{{ diagnostics.blocks }}</dd>
-        <dt>dropped</dt>
-        <dd>{{ diagnostics.dropped }}</dd>
-
-        <template v-if="diagnostics.capture.state === 'running'">
-          <dt>rate</dt>
-          <dd>{{ diagnostics.capture.sampleRate }} Hz</dd>
-          <dt>channels</dt>
-          <dd>{{ diagnostics.capture.channels }}</dd>
-          <dt>format</dt>
-          <dd>{{ diagnostics.capture.sampleFormat }}</dd>
-          <dt>buffer</dt>
-          <dd>{{ diagnostics.capture.bufferFrames ?? "?" }} frames</dd>
-          <dt>device</dt>
-          <dd>{{ diagnostics.capture.device }}</dd>
-
-          <template v-if="diagnostics.capture.session">
-            <dt>session rate</dt>
-            <dd>{{ diagnostics.capture.session.sampleRate }} Hz</dd>
-            <dt>session ch</dt>
-            <dd>{{ diagnostics.capture.session.inputChannels }}</dd>
-            <dt>mode</dt>
-            <dd>
-              {{ diagnostics.capture.session.mode }}
-              <span v-if="!diagnostics.capture.session.measurementMode"> (NOT Measurement)</span>
-            </dd>
-            <dt>io buffer</dt>
-            <dd>{{ (diagnostics.capture.session.ioBufferDuration * 1000).toFixed(2) }} ms</dd>
-            <dt>mic</dt>
-            <dd>{{ diagnostics.capture.session.permissionGranted ? "granted" : "NOT GRANTED" }}</dd>
-          </template>
-        </template>
-      </dl>
-
-      <p v-if="diagnostics.lastError" class="err">stream error: {{ diagnostics.lastError }}</p>
-    </template>
+    <!-- Mounted only while open, so the input buffers and the armed Reset are discarded by
+         closing it rather than by being cleared by hand. -->
+    <SettingsSheet
+      v-if="sheetOpen && meter && settings"
+      :meter="meter"
+      :settings="settings"
+      @applied="applied"
+      @close="sheetOpen = false"
+    />
   </main>
 </template>
 
 <style>
+/* Dark and high contrast, and not a free choice: spec §7.1 puts an inferno ramp on a near-black
+   field, and light chrome around a dark picture fights it.
+
+   The accent is deliberately cool. The inferno ramp runs black → purple → red → orange → yellow,
+   so a warm accent could be read as a level; a cyan cannot. **The accent never means alarm**
+   (spec §11.8) — it marks the input-state line and the armed Reset, states and affordances only.
+   The test that this holds: at 73.5 dB the screen is identical to 66.7 dB apart from the picture
+   being brighter. */
 :root {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --bg: #0a0a0c;
+  --surface: #16161b;
+  --raised: #121216;
+  --line: #26262e;
+  --ink: #ececee;
+  --ink-dim: #8e8e96;
+  --ink-faint: #70707a;
+  --accent: #5ac8fa;
+
+  --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  font-family: var(--sans);
   font-size: 16px;
-  color: #eee;
-  background: #111;
+  color: var(--ink);
+  background: var(--bg);
+  color-scheme: dark;
   -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   margin: 0;
+  background: var(--bg);
 }
 
-main {
-  padding: env(safe-area-inset-top, 0) 1rem 1rem;
-  padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
-}
-
-.tag {
-  margin: 0;
-  font-size: 0.75rem;
-  opacity: 0.5;
-}
-
-.hero {
-  /* Big enough to read from across a room, which is the entire point of this screen. */
-  margin: 0.5rem 0;
-  font-size: 3.5rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
-}
-
-.unit {
-  font-size: 1rem;
-  opacity: 0.6;
-}
-
-.state {
-  margin: 0.75rem 0;
-  opacity: 0.8;
-}
-
-dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.15rem 0.75rem;
-  margin: 0;
-  font-size: 0.85rem;
-}
-
-dt {
-  opacity: 0.5;
-}
-
-dd {
-  margin: 0;
-  overflow-wrap: anywhere;
-}
-
-.controls {
-  margin: 0.75rem 0;
-  font-size: 0.85rem;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-bottom: 0.35rem;
-}
-
-.label {
-  width: 5.5rem;
-  flex: none;
-  opacity: 0.5;
-}
-
-button,
-input {
+button {
   font: inherit;
   color: inherit;
-  background: #1e1e1e;
-  border: 1px solid #3a3a3a;
-  border-radius: 4px;
-  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 input {
-  width: 5rem;
+  -webkit-appearance: none;
+  appearance: none;
+}
+</style>
+
+<style scoped>
+/* Portrait is primary and **width-capped**: in a tall desktop window the stack centres at phone
+   width rather than stretching across 1400 px (spec §11.7). */
+.screen {
+  display: grid;
+  grid-template-areas:
+    "readout"
+    "picture"
+    "more";
+  align-content: center;
+  justify-items: center;
+  box-sizing: border-box;
+  max-width: 26rem;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem
+    calc(env(safe-area-inset-bottom, 0px) + 1rem);
+  gap: 1.5rem;
 }
 
-button.on {
-  background: #eee;
-  color: #111;
+.readout {
+  grid-area: readout;
+  width: 100%;
+  /* Held open across the ≤100 ms before the first tick, so nothing shifts when it lands. */
+  min-height: 14rem;
 }
 
-.outcome {
-  margin: 0.5rem 0 0;
-  font-size: 0.75rem;
-  opacity: 0.7;
-  overflow-wrap: anywhere;
+.picture {
+  grid-area: picture;
+  box-sizing: border-box;
+  width: 100%;
+  height: 205px;
+  padding: 0 58px 20px 40px;
 }
 
-.err {
-  margin-top: 0.75rem;
-  color: #ff8f8f;
-  overflow-wrap: anywhere;
+.more {
+  grid-area: more;
+  min-width: 4rem;
+  min-height: 2.75rem;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: var(--ink-dim);
+  background: none;
+  border: none;
+}
+
+/* **One wide reflow, at `max-height: 700px`, serving both phone-landscape and the 800×600 dev
+   window.** The threshold is measurement, not phone geometry: an 800×600 desktop window is a
+   *landscape* case — shorter than a phone is tall — so a breakpoint drawn at phone-landscape
+   height (560 px) misses it and the portrait stack pushes Reset below the fold (spec §11.7).
+   Here the picture goes **beside** the number; arranging anything inside it is `b11`'s job. */
+@media (max-height: 700px) {
+  .screen {
+    grid-template-areas:
+      "readout picture"
+      "more picture";
+    /* Wide enough for the hero's own widest state, which is what sets it: `−108.4` is 371 px at
+       the capped 7.5rem, and `vw` is the whole window here rather than the column, so the column
+       has to be the thing that fits it. */
+    grid-template-columns: minmax(23.5rem, 24rem) 1fr;
+    grid-template-rows: auto auto;
+    align-content: center;
+    align-items: center;
+    max-width: none;
+    column-gap: 2rem;
+    row-gap: 0.5rem;
+  }
+
+  .readout {
+    min-height: 0;
+  }
+
+  .picture {
+    align-self: center;
+  }
 }
 </style>
