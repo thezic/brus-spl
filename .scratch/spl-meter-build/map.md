@@ -4,13 +4,15 @@ Labels: `wayfinder:map`
 
 ## Destination
 
-A meter **you can trust at a talk on ~2026-08-12**, and which has been read through that talk
-at least once.
+A meter **you can trust at a talk**, and which has been read through a real talk at least once.
 
-**Scope flexes; the date does not.** The tickets are cut so the cut line — "we ran out of
-days" — always falls cleanly between them, and so that stopping early leaves a real
-instrument rather than half of one. The drop order is written down in
-[Route](#route) rather than discovered on the last day.
+**Scope flexes; the instrument does not.** The tickets are cut so that stopping at any boundary
+leaves a real instrument rather than half of one, and so the cut always falls cleanly between
+them. Which things go first is written down in [Route](#route) rather than decided under pressure.
+
+This map used to carry a target date. It is gone deliberately: it had drifted from the truth, and a
+countdown in a document is worse than no countdown, because it gets quoted back as if it were a
+commitment. **What survives is the priority order, which is the part that was ever useful.**
 
 The authority for *what* to build is
 [`spl-meter-mvp/spec.md`](../spl-meter-mvp/spec.md), the destination of
@@ -111,7 +113,7 @@ is done when it is closed.
 
 ### Drop order
 
-If days run short, drop in this order and no other:
+Not a schedule. **If you have to stop, stop here** — in this order and no other:
 
 1. ~~**[Interruption and recovery](issues/b07-interruption-and-recovery.md)**~~ — **built, so
    this slack is spent.** It was the only droppable Tier 1 ticket: without it an interruption is
@@ -120,7 +122,9 @@ If days run short, drop in this order and no other:
    degradation; nothing else in Tier 1 is. The remaining drop order therefore starts at 2.
 2. **All of Tier 2**, whole. A partial picture is worse than none — §7.1's colour scale only
    means something with the fixed band layout and the legend behind it.
-3. Nothing else. If Tier 1 minus `b07` will not land, the date is the thing that has to move.
+3. Nothing else. Tier 1 is the instrument; below it there is no meter worth carrying to a room.
+   **It is closed** — `b01`–`b08`, device pass included — so this line is now a statement about
+   what must not be given back rather than about what might not land.
 
 **What you lose by dropping Tier 2**, stated so the trade is made with open eyes: the number
 answers *how loud*, and only the picture answers *what is making it and whether it has been
