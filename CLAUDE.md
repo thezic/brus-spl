@@ -8,7 +8,7 @@ A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: it
 
 **Implementation runs from `.scratch/spl-meter-build/`** — `map.md` is the index, `issues/b01`–`b13` are the tickets. **Read that map before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b13` here) are deliberately distinct.
 
-The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus six components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. **Tier 1 is closed**, device pass included. **Tier 2 is closed**: `b09` added `spectrum.rs` — the FFT tap, the third-octave banding and the 1200-column ring — `b10` put it on the wire, and `b11` drew it (`Spectrogram.vue` + `spectrogram.ts`), on the phone included. §13.14's long-standing question is **answered**: ~6 px per band over 32 bands reads fine at arm's length, so the band count and the ~205 px height stand. What has never been seen is any of it in a **dim** room; that is `b13`. Only the venue tickets, `b12` and `b13`, are open.
+The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus six components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. **Tier 1 is closed**, device pass included. **Tier 2 is closed**: `b09` added `spectrum.rs` — the FFT tap, the third-octave banding and the 1200-column ring — `b10` put it on the wire, and `b11` drew it (`Spectrogram.vue` + `spectrogram.ts`), on the phone included. §13.14's long-standing question is **answered**: ~6 px per band over 32 bands reads fine at arm's length, so the band count and the ~205 px height stand. What has never been seen is any of it in a **dim** room; that is `b13`. `b12` rehearsed the re-sign and install — read its resolution before signing for the talk, because **a rebuild does not re-sign**. **Only [the venue run](.scratch/spl-meter-build/issues/b13-the-venue-run.md) is open**, and it is the destination: the map is done when it closes.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
@@ -50,6 +50,41 @@ arm64` naming `_AVAudioSessionCategoryRecord`, `_AudioComponentFindNext` and sim
 this compiles and `cargo check`s perfectly happily; only the Xcode link catches it.
 **Changing `frameworks` requires regenerating the project** —
 `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx tauri ios init`.
+
+**A rebuild does not re-sign, and free provisioning gives you 7 days from the profile's
+*creation*.** `tauri ios build` reuses whatever is cached in
+`~/Library/Developer/Xcode/UserData/Provisioning Profiles/` and says nothing, so a build made this
+morning can embed a profile that dies tomorrow — the failure is silent until the app refuses to
+launch. Read the expiry rather than assuming it:
+
+```bash
+unzip -p src-tauri/gen/apple/build/arm64/decibel-meter.ipa \
+  "Payload/decibel-meter.app/embedded.mobileprovision" > /tmp/prov.plist
+security cms -D -i /tmp/prov.plist | plutil -p - | grep -E "CreationDate|ExpirationDate"
+```
+
+To force a fresh one: move that profile out of the cache directory and rebuild — Xcode issues a new
+7-day profile during the build, no prompt and no paid account (`b12`, 48 s end to end). The signing
+*certificate* is valid for a year, so this is never a certificate problem.
+
+**The stored calibration offset can be pulled off the phone and pushed back**, which is the real
+answer to spec §13.10:
+
+```bash
+xcrun devicectl device copy from --device <udid> \
+  --domain-type appDataContainer --domain-identifier net.thezic.decibel-meter \
+  --source "Library/Application Support" --destination ./backup     # `--source .` fails
+xcrun devicectl device copy to   --device <udid> \
+  --domain-type appDataContainer --domain-identifier net.thezic.decibel-meter \
+  --source ./backup/net.thezic.decibel-meter/settings.json \
+  --destination "Library/Application Support/net.thezic.decibel-meter/settings.json"
+```
+
+The app reads it at the next launch and prints what it loaded to stderr, so a restore is verifiable
+with `idevicesyslog -m "settings:"`.
+
+**`devicectl device orientation` is simulator-only** — it answers `CoreDeviceError 1001` on a real
+phone, so a rotation/reflow test needs a hand on the device.
 
 **A locked phone cannot be launched onto.** `devicectl device process launch` fails with
 `ERROR … CoreDeviceError 10002` / `RequestDenied` / `Unable to launch … because the device was not,

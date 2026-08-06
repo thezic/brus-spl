@@ -1332,6 +1332,12 @@ nor does switching machines or regenerating the Xcode project. Mitigated rather 
 offset is **displayed so it can be written down and retyped in seconds** (§8.5). **Keep a written
 copy** (`06`).
 
+**`b12` reduces this to a file copy.** The whole settings file can be pulled off the phone and
+pushed back with `xcrun devicectl device copy from|to --domain-type appDataContainer`, both
+directions proven against the device log. The loss is still possible; the recovery is no longer a
+retype, and the backup is a command rather than a discipline. (Over-the-top installs *were*
+confirmed to preserve the container, twice, including across a re-sign.)
+
 ### 13.11 Measurement is foreground-only
 
 Capture does not survive backgrounding (§4.3). The idle timer is disabled so the screen does not
@@ -1476,8 +1482,13 @@ None block implementation. Listed so they are not mistaken for oversights.
 
 - **Arm's-length band legibility** (§13.14) — the one question the prototypes handed on. Cheap to
   answer; if the answer is "no", it is a correction to §7.1's band count or §11.7's height.
-- **Free-provisioning friction.** Signing works, but the 7-day expiry has never been hit, so the
-  re-signing workflow is unrecorded. §13.10 is the consequence that is already mitigated.
+- ~~**Free-provisioning friction.**~~ **Recorded by `b12`**, and it found something worse than the
+  expiry itself: **a rebuild does not re-sign.** `tauri ios build` reuses the cached profile, so a
+  build made this morning can carry a profile that dies in a day, silently. Forcing a fresh one is
+  deleting the cached profile from `~/Library/Developer/Xcode/UserData/Provisioning Profiles/` and
+  rebuilding — 48 s, no prompt, no paid account, and the *certificate* is valid for a year so this
+  is never a certificate problem. The number to check is `ExpirationDate` in the `.ipa`'s embedded
+  profile, read rather than assumed.
 - **A signed macOS build with the `audio-input` entitlement** (§2.1) — macOS is dev-only, so low
   priority, but capture will break silently in a signed bundle if the entitlement is wrong.
 - **Logging and export** — deliberately out of scope, and the most probable *next* effort. If whoever

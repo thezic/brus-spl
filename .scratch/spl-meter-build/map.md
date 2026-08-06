@@ -474,6 +474,26 @@ difference matter (spec §7).
   orientation` turns out to be simulator-only). **The ticket is closed on every Done-when clause.**
   What is left of the question is the *dim* room, which is the venue's to answer.
 
+- [Re-sign and install rehearsal](issues/b12-re-sign-and-install-rehearsal.md)
+  — **Rehearsed five days early, and it found the thing it was cut to find on the first look: a
+  rebuild does not re-sign.** Today's `.ipa` embedded **yesterday's** profile — created 08-05,
+  expiring 08-12 — because `tauri ios build` reuses whatever is cached and says nothing, so the
+  expiry is measured from the profile's *creation* and not from the build. That is the silent
+  failure in its most plausible disguise: *I built it this morning, so it is good for a week.* The
+  workflow that fixes it is **delete the cached profile in
+  `~/Library/Developer/Xcode/UserData/Provisioning Profiles/`, then rebuild** — Xcode issues a fresh
+  one during the build with no prompt, proven end to end and **48 s** for the build, about a minute
+  including install and launch. New profile expires **2026-08-13 15:25 UTC**; the *certificate*
+  runs to 2027-01-29, so re-signing is never a certificate problem and never needs a paid account.
+  Two more that outlive the ticket: the stored offset can be **read off the phone** with `devicectl
+  device copy from` on the app data container (`offset_db: 113.26162153261384`, survived both a
+  plain and a re-signed install), and it can be **written back** — round-tripped and verified in the
+  device log, which turns §13.10's lost container from a retype into a file copy. Also the first
+  *observation* rather than provocation of `b07`/`b08`'s chain: the phone locking mid-install
+  produced a route change, a rebuild, `setActive` refused with `'!pla'`, and recovery on returning
+  to the foreground. Left for Simon because they are physical: charge, the auto-lock eyeball, and
+  the reference meter's details.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
