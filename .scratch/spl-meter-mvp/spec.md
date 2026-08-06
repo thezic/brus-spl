@@ -237,10 +237,23 @@ New finding: **`inputNumberOfChannels` went 1 → 0 and stayed there**, so the s
 
 ### 4.3 Measurement is foreground-only
 
-Capture does not survive backgrounding (`11` probe 2b — the app dies; whether iOS terminated
-it or our own code faulted was never characterised). **The `audio` background mode is not
-added**; that is the case research `01` warned would push toward a Swift/`AVAudioEngine`
-rewrite, and it is not needed for an instrument being read at a venue (`11` d4).
+Capture does not survive backgrounding. **The `audio` background mode is not added**; that is the
+case research `01` warned would push toward a Swift/`AVAudioEngine` rewrite, and it is not needed
+for an instrument being read at a venue (`11` d4).
+
+**Corrected by `b08`, which characterised what `11` probe 2b could not.** Probe 2b recorded *the
+app dies*, with the cause unknown. Measured on device with the full app: **the process survives**
+— same PID across a 70 s background period that included a device lock and unlock — and what
+actually stops is the audio session. Backgrounding delivers a route change that invalidates the
+stream, and every `setActive(true)` afterwards is refused with
+`AVAudioSessionErrorCodeCannotStartPlaying` (561015905, `'!pla'`) for exactly as long as the app
+is out of the foreground. It recovers **3 s after returning**, unaided.
+
+That is a better outcome than probe 2b implied, and it is `b07`'s doing rather than iOS's: the
+supervisor's never-give-up retry is what turns *return to the foreground and restart the app* into
+*return to the foreground*. Without it the app would come back frontmost holding a permanently dead
+stream — the state this section previously assumed was terminal. §6.4's coverage figure reports the
+hole either way.
 
 ### 4.4 The idle timer must be disabled
 
@@ -1496,6 +1509,8 @@ list exists so a reader who goes back to a ticket is not misled.
 | `08` d9's "five types and eight commands" | **Seven commands** — its own contract block lists seven (§9.1). |
 | `09`'s own Question, "the rolling L_eq should dominate" | **Inverted** (`09` d2) — the hero is the live level, and §11.1 states the cost. |
 | `CLAUDE.md`'s note that `src-tauri/gen/` is generated | Already fixed: `gen/schemas` is off-limits, `gen/apple/` is tracked and editable but must stay regenerable. |
+| `11` probe 2b's "the app dies" on backgrounding (§4.3) | **The process survives; the session is what stops** (`b08`) — same PID across 70 s backgrounded, `setActive` refused with `'!pla'` throughout, and recovery 3 s after returning to the foreground. Terminal before `b07`; self-healing after it. |
+| §2.2's "`println!` does not reach `devicectl … --console`", as read | True, but it was read as *on-device diagnostics must be on screen*. **`idevicesyslog` carries Rust's `eprintln!` verbatim, tagged `[stderr]`** (`b08`) — no Xcode, no throwaway readout. |
 
 ---
 

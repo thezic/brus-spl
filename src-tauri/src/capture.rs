@@ -293,8 +293,12 @@ impl Capture {
         self.dropped.load(Ordering::Relaxed)
     }
 
-    /// Streams successfully built since startup. `1` is a session that never lost its stream;
-    /// every value above that is a recovery that happened (spec §4.2).
+    /// Streams successfully built since startup.
+    ///
+    /// **On a device a clean launch reads `2`, not `1`** (`b08`): the audio route settles a few tens
+    /// of ms after the session activates and cpal raises `StreamInvalidated: Audio route changed`,
+    /// so the supervisor rebuilds once before anything has been measured. Anything above two is a
+    /// recovery from something that happened during the session.
     pub fn builds(&self) -> u64 {
         self.builds.load(Ordering::Relaxed)
     }

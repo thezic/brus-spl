@@ -345,6 +345,34 @@ difference matter (spec §7).
   `bundle.iOS.frameworks` entry and no regeneration**, asserted by building. Untested and said so:
   the retry loop, and route-change recovery — half of which `b08` then caught by accident.
 
+- [Tier 1 device pass](issues/b08-tier-1-device-pass.md)
+  — **Tier 1 runs on the phone and every item has an answer. Two corrections to the spec, one to
+  this ticket's own method, and one measurement worth more than the checklist.** The method went
+  first: §2.2's *`println!` does not reach `devicectl … --console`* had been read for two tickets as
+  *on-device diagnostics must be on screen*, and it is only half true — **`idevicesyslog` carries
+  Rust's `eprintln!` verbatim, tagged `[stderr]`**, from a plain shell with no Xcode. That is what
+  made an unattended fifteen-minute log possible, and everything below came out of it.
+  **`measurement_mode: true`** — the 21 dB question, the highest-consequence check in the effort,
+  answered — with rate, channels and `io_buffer_duration` all granted *exactly* (1024/48000 to the
+  last digit). **The idle timer is now a measurement**: frontmost 14 min 28 s with `deviceLocked:0`
+  and no dimming, against the same phone dimming after 42 s and locking after 61 s once
+  backgrounded — so §4.4's two lines held the screen for ~14× the device's own auto-lock.
+  **But the finding is spec §4.3.** It recorded `11` probe 2b as *the app dies* on backgrounding,
+  cause uncharacterised. **It does not die** — same PID across 70 s backgrounded including a lock
+  and unlock. What stops is the session: iOS refuses `setActive(true)` for a non-frontmost app with
+  `AVAudioSessionErrorCodeCannotStartPlaying` (`'!pla'`), for exactly as long as it is out of the
+  foreground. Recovery took **3 s from returning**, unaided — so backgrounding went from *restart
+  the app* to *nothing to do*, and it is `b07`'s two least-defensible-looking choices that did it:
+  **retry forever** rather than give up, and **log once per run**, which is why ~140 refused
+  activations produced one line instead of burying the recovery. Not an argument for the `audio`
+  background mode: the meter stays foreground-only and coverage reports the hole; the hole now
+  closes itself. Smaller: a route change fires at **every** launch (harmless, 70 ms, and
+  `Capture::builds` therefore reads `2` after a clean launch), `S` reads live rather than twitchy,
+  `--` reads fine at arm's length, and settings survived four install-over-the-tops. Deliberately
+  not tested: the **uncalibrated state**, because seeing it means clearing a good calibration and
+  the honest way to do that is [`b12`](issues/b12-re-sign-and-install-rehearsal.md)'s own gesture;
+  and **`denied`**, because the microphone was granted.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
@@ -352,24 +380,29 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
 "never tested, and we know it".
 
 - **What [the venue run](issues/b13-the-venue-run.md) reveals.** It is the first time this
-  design meets a real microphone in a real room, and three settled parameters are explicitly
-  waiting on it: §7.1's `−90 … −30 dBFS` colour window (named by `07` as the value most likely
-  to want moving), the *feel* of the hero number on real speech, and §11.1's accepted risk
-  that the dominant number is not the number judged against the ceiling.
-- **Arm's-length legibility in a dim venue.** ~6 px per band, 32 bands over ~205 px, and the
-  muted `--` at hero size. Carried unanswered from `07` through `09` through `10`; if the
-  answer is "no" it is a correction to the band count or the ~200 px height, so it wants
-  answering *before* [the spectrogram canvas](issues/b11-the-spectrogram-canvas.md) rather
-  than after. `b06` narrowed one half of it: on a desk the `--` reads as a muted absence rather
-  than a redaction bar, and the hero is now as large as the widest state permits at any phone
-  width — but *at a desk* is not the question, and the band legibility is untouched.
+  design meets a real *room*, and two settled parameters are still waiting on it: §7.1's
+  `−90 … −30 dBFS` colour window (named by `07` as the value most likely to want moving) and
+  §11.1's accepted risk that the dominant number is not the number judged against the ceiling.
+  **The third is answered**: `b08` read the hero on real speech on the phone and `S` is **live
+  rather than twitchy**, which is the first evidence for `09` d5's choice of `S` as the default. A
+  desk is not a venue, but this was the phone and a real voice.
+- **Arm's-length legibility in a dim venue — the hero half is answered, the band half is not.**
+  `b06` established on a desk that `--` reads as a muted absence rather than a redaction bar, and
+  `b08` confirmed **on the phone at arm's length** that it reads fine. What remains is the part
+  that was always the risk: **~6 px per band, 32 bands over ~205 px**, untouched and unbuildable
+  until [`b09`](issues/b09-spectrum-analysis-and-the-column-ring.md). If the answer is "no" it is a
+  correction to the band count or the ~200 px height, so it still wants answering *before*
+  [the canvas](issues/b11-the-spectrogram-canvas.md) rather than after. Neither half has been seen
+  *dim*.
 - **`get_spectrogram` in a WKWebView on the phone.** 276 KB of JSON at a 120 s span parses in
   a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
   the command, aggregating in Rust — costs the single-aggregator property, so it is a trade
   rather than a fix.
-- **`"denied"` on iOS, still.** `b07` put the app on the phone and the microphone was granted, so
-  the `denied` line remains rendered-but-never-produced by a real refusal. It is one tap in
-  Settings away at [the Tier 1 device pass](issues/b08-tier-1-device-pass.md).
+- **`"denied"` on iOS, still.** The app has run on the phone across `b07` and `b08` with the
+  microphone granted throughout, so §9.4's most useful state remains rendered-but-never-refused by
+  a real denial. It is one tap in Settings, and it did not get taken — it now wants doing before
+  [the venue run](issues/b13-the-venue-run.md), since a denied microphone at a venue is the one
+  failure the reader can actually fix.
 - **`"denied"` on macOS.** Per `CLAUDE.md`, `tauri dev` gets microphone access through the
   responsible parent process, so the desk may report `capturing` where the phone reports
   `denied` — spec §9.4's most useful state is the one hardest to exercise where you are
