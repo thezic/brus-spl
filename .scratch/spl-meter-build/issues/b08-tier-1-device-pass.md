@@ -23,6 +23,12 @@ xcrun devicectl device process launch --device <udid> net.thezic.decibel-meter
 
 ## What to check, and why each is here
 
+- ~~**`b01`'s unfinished half: `devicectl install` + `process launch`.**~~ **Done — closed by
+  [`b07`](b07-interruption-and-recovery.md)'s device pass**, which found the phone `available`,
+  installed, launched, and confirmed the app captures and tracks sound sensibly. The one snag worth
+  keeping: **a locked phone cannot be launched onto** — `devicectl` fails with
+  `RequestDenied … Locked`, which reads like a signing problem and is not one. Unlock first. The
+  original text follows, because the reasoning is still the reasoning:
 - **`b01`'s unfinished half: `devicectl install` + `process launch`.** Inherited from
   [Session, capture and the idle timer](b01-session-capture-and-the-idle-timer.md), which
   proved the *link* — `tauri ios build --debug` reached `BUILD SUCCEEDED` with zero

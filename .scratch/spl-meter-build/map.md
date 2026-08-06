@@ -170,9 +170,12 @@ difference matter (spec §7).
   there. Nothing in spec §16 was vetoed — `rtrb` degrades into lost coverage exactly as §6.10 wants,
   and §16.9's channel-0 rule cost one `chunks_exact` and never fired on the mono route.
   **`devicectl install` + `launch` never ran** — the paired iPhone 14 Pro reports `unavailable` — so the
-  remaining risk is launch-time rather than link-time, and it now sits as the first item of
+  remaining risk is launch-time rather than link-time, and it sat as the first item of
   [the Tier 1 device pass](issues/b08-tier-1-device-pass.md) rather than holding this ticket open.
-  Nothing has yet run on the phone.
+  **That half is now closed, by [`b07`](issues/b07-interruption-and-recovery.md)** — the phone came
+  back `available`, `devicectl install` and `process launch` both worked, and the app runs and
+  captures on the device. Launch-time risk is retired; what `b08` still owns from here is the
+  `Measurement`-mode read-back, which needs the log and so needs Xcode.
 
 - [The metrics pipeline](issues/b03-the-metrics-pipeline.md)
   — **Built and green: 18 synthetic tests, `cargo test` 39 overall, and verified against two minutes
@@ -318,9 +321,17 @@ difference matter (spec §7).
   ~210 dead milliseconds** (209–222, ±4, five runs), which is *over* §6.9's 200 ms threshold and can
   only be longer on the phone — so every recovery shows `--`, correctly, and half of `b06`'s
   "`--` was never produced by a stream that actually stopped" is now closed. Five mutations, all
-  caught, each by exactly one test. Untested and said so: **every iOS-specific line** — the observer
-  has never fired and whether `setActive(true)` recovers a deactivated session is the actual question
-  — plus the retry loop, and route-change recovery, which stays in the fog for want of headphones.
+  caught, each by exactly one test. **And the device pass happened here rather than being deferred,
+  because the iPhone 14 Pro became `available` mid-ticket — so `b01`'s unfinished half closes with
+  it and something in this effort has finally run on the phone.** The Siri test passes: `--` while
+  the microphone is gone, coverage dropping and climbing back with the hole still visible, and the
+  meter resuming on its own, effectively instantly. Then the second item was **forced rather than
+  waived** — a variant with the observer compiled out, installed, and the test repeated: **it still
+  recovers, in ~0.5 s instead of instantly.** So the health check is sufficient alone and the
+  notification is **the fast path, not the mechanism** — the right way round, since the reliable
+  trigger is the one that cannot fail to arrive. `objc2-foundation` needed **no
+  `bundle.iOS.frameworks` entry and no regeneration**, asserted by building. Untested and said so:
+  the retry loop, and route-change recovery, which stays in the fog for want of headphones.
 
 ## Not yet specified
 
@@ -344,6 +355,9 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
   the command, aggregating in Rust — costs the single-aggregator property, so it is a trade
   rather than a fix.
+- **`"denied"` on iOS, still.** `b07` put the app on the phone and the microphone was granted, so
+  the `denied` line remains rendered-but-never-produced by a real refusal. It is one tap in
+  Settings away at [the Tier 1 device pass](issues/b08-tier-1-device-pass.md).
 - **`"denied"` on macOS.** Per `CLAUDE.md`, `tauri dev` gets microphone access through the
   responsible parent process, so the desk may report `capturing` where the phone reports
   `denied` — spec §9.4's most useful state is the one hardest to exercise where you are

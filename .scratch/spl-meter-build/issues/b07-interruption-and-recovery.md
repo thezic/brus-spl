@@ -158,12 +158,41 @@ that records without asking, a request that does not wake the waiter, and a rebu
 count itself. The counter (`Capture::builds`) exists because *did it come back on its own* is a
 yes-or-no question and reading it off a log is not one.
 
-**Untested and said so.** Everything iOS-specific: the notification observer has never fired, the
-`Ended` branch and the userInfo decode have never run, `input_channels` has never been read off a
-real session, and **whether `setActive(true)` recovers a session iOS deactivated is the actual
-question this ticket exists for** — none of which macOS can produce. `devicectl` still reports the
-paired iPhone 14 Pro `unavailable`, exactly as at `b01`, so the Siri test moves to
-[the Tier 1 device pass](b08-tier-1-device-pass.md) rather than holding this open. The retry loop
-itself has no test, because a build failure cannot be forced without taking the hardware away.
-And **route-change recovery stays in the fog**: probe 3 was not run, for want of headphones. It
-wants a plug-and-unplug mid-measurement, watching `builds()` and the sample rate.
+## Device pass
+
+**Both device Done-when items passed, on an iPhone 14 Pro that became `available` while this
+ticket was open — so the phone half is closed here rather than deferred, and `b01`'s unfinished
+half goes with it: this is the first time anything in this effort has run on the device.**
+`tauri ios build --debug` reached `BUILD SUCCEEDED` with `objc2-foundation` added, which — like
+`objc2-ui-kit` at `b01` — needed **no `bundle.iOS.frameworks` entry and no regeneration**,
+asserted by building rather than by reading. `check-ios-plist.sh` passed, `devicectl install` and
+`process launch` both worked (the one failure was `RequestDenied … Locked`: a locked phone cannot
+be launched onto, which is a fact about `devicectl` and not about the app).
+
+**Item 1 — the Siri test passes.** Measuring, Siri invoked, Siri dismissed: the hero reads `--`
+while the microphone is gone, the 60 s coverage figure **drops and then climbs back**, and the
+meter resumes **on its own**. The hole stays visible, which is the half of the criterion a
+recovery that also erased the evidence would have failed. Recovery was *effectively instant*,
+consistent with the notification arriving the moment the interruption ended and with the ~210 ms
+measured on the desk.
+
+**Item 2 — the health check alone recovers it, and this is the finding worth carrying.** Forced
+by building a variant with the observer compiled out entirely, installing it, and repeating the
+Siri test: **it still recovers, in ~0.5 s instead of instantly.** So the 10 Hz poll of
+`inputNumberOfChannels` is sufficient on its own — which is what `11` probe 2's total silence
+always implied — and the notification observer is **the fast path rather than the mechanism**.
+That is the right way round for an instrument: the reliable trigger is the one that cannot fail
+to arrive, and the announcement merely saves half a second. Both were live in the shipped build,
+and half a second is a fifth of the hole an interruption already costs.
+
+**Also observed, and it belongs to [the Tier 1 device pass](b08-tier-1-device-pass.md) rather than
+here:** the app launches, captures, and the numbers **track sound sensibly** — a quiet room reads
+much lower than someone talking at it. First evidence that the capture path works on the phone at
+all. It is *not* evidence about `Measurement` mode, which is a 21 dB fixed gain that would look
+entirely plausible if it silently failed; that check still needs the log, and so still needs Xcode.
+
+**Untested and said so.** The retry loop has no test, because a build failure cannot be forced
+without taking the hardware away. `Activation::Recovery`'s skipped permission prompt ran on device
+but was never *observed* — it is inferred from the recovery working at all. And **route-change
+recovery stays in the fog**: probe 3 was not run, for want of headphones. It wants a
+plug-and-unplug mid-measurement, watching `builds()` and the sample rate.

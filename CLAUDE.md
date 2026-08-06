@@ -8,7 +8,7 @@ A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: it
 
 **Implementation runs from `.scratch/spl-meter-build/`** — `map.md` is the index, `issues/b01`–`b13` are the tickets. **Read that map before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b13` here) are deliberately distinct.
 
-The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `src/App.vue` currently holds a deliberately temporary readout, not a layout — the real screen is ticket `b06`.
+The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus five components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. Tier 1 is code-complete through `b07`; `b08` is the device pass that closes the tier.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
@@ -50,6 +50,12 @@ arm64` naming `_AVAudioSessionCategoryRecord`, `_AudioComponentFindNext` and sim
 this compiles and `cargo check`s perfectly happily; only the Xcode link catches it.
 **Changing `frameworks` requires regenerating the project** —
 `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx tauri ios init`.
+
+**A locked phone cannot be launched onto.** `devicectl device process launch` fails with
+`ERROR … CoreDeviceError 10002` / `RequestDenied` / `Unable to launch … because the device was not,
+or could not be, unlocked`. It reads like a signing or provisioning failure and is not one — unlock
+the phone and re-run. `devicectl device install app` works fine on a locked device, so the install
+succeeding is not evidence that the launch will.
 
 **Never run `tauri ios init` with `FORCE_COLOR` set in the environment.** Use
 `env -u FORCE_COLOR npx tauri ios init`. Tauri's generated "Build Rust Code" script phase
@@ -103,7 +109,7 @@ Permission wiring, all of which is in place:
 
 This now lives in `src-tauri/src/session.rs` (iOS-only, behind `cfg(target_os = "ios")`) and `src-tauri/src/capture.rs`, built by ticket `b01`, which replaced the throwaway spike. Spec §3 is the authority.
 
-**An interruption kills the stream permanently and tells cpal nothing** (spec §4, ticket `b07`). Neither CoreAudio backend raises cpal's `DeviceChanged`, and a Siri call reached Rust as no error at all — the only symptom was `AVAudioSession.inputNumberOfChannels` going 1 → 0 and staying there. So `capture.rs` runs a **supervisor loop** on the capture thread that rebuilds the stream on any of three signals: an `AVAudioSessionInterruptionNotification` observer, a cpal stream error, and a 10 Hz poll of `inputNumberOfChannels` from the tick. Recovery must `setActive(true)` **before** rebuilding — a rebuild against a deactivated session fails with `InvalidInput: channel count must be at least 1`, which is the *same* error as a never-set category, so it reads as a regression in `b01`'s setup code and is not one. A rebuild costs ~210 ms of real dead air, over §6.9's 200 ms staleness threshold, so `--` on screen during a recovery is expected.
+**An interruption kills the stream permanently and tells cpal nothing** (spec §4, ticket `b07`). Neither CoreAudio backend raises cpal's `DeviceChanged`, and a Siri call reached Rust as no error at all — the only symptom was `AVAudioSession.inputNumberOfChannels` going 1 → 0 and staying there. So `capture.rs` runs a **supervisor loop** on the capture thread that rebuilds the stream on any of three signals: an `AVAudioSessionInterruptionNotification` observer, a cpal stream error, and a 10 Hz poll of `inputNumberOfChannels` from the tick. **The poll is the mechanism; the notification only makes it faster** — measured on device by building a variant with the observer compiled out, which still recovered from a Siri interruption in ~0.5 s against effectively-instant with it. Recovery must `setActive(true)` **before** rebuilding — a rebuild against a deactivated session fails with `InvalidInput: channel count must be at least 1`, which is the *same* error as a never-set category, so it reads as a regression in `b01`'s setup code and is not one. A rebuild costs ~210 ms of real dead air, over §6.9's 200 ms staleness threshold, so `--` on screen during a recovery is expected.
 
 Two properties of that code are load-bearing and easy to undo by accident:
 
