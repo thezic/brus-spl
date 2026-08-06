@@ -21,6 +21,7 @@ use rtrb::{Consumer, RingBuffer};
 use serde::Serialize;
 
 use crate::session;
+use crate::spectrum::FFT_N;
 use crate::weighting::{Weighting, WeightingChain};
 
 /// One audio block, reduced to the only three things the metrics ring needs.
@@ -196,9 +197,22 @@ pub struct Capture {
     /// `None` until the stream is built. Locked only by the draining side; the callback never
     /// touches it.
     consumer: Mutex<Option<Consumer<BlockSummary>>>,
+    /// The spectrogram's tap: the **raw** channel-0 samples, ahead of the weighting filter
+    /// (spec §3.3, §5.2, §7.2). A second queue rather than a second field on
+    /// [`BlockSummary`] because the two pipelines consume at different granularities — the
+    /// metrics ring wants one summary per block, the FFT wants a continuous sample stream — and
+    /// because the picture must stay unweighted whatever the meter is set to.
+    ///
+    /// The callback's whole contribution is the copy; the transform runs off it, on the tick.
+    samples: Mutex<Option<Consumer<f32>>>,
     /// Blocks the queue had no room for. Bumped from the callback, which is why it is an
     /// atomic and not a counter behind the same lock.
     dropped: Arc<AtomicU64>,
+    /// Raw samples the FFT queue had no room for. Kept apart from [`Capture::dropped`] because
+    /// the consequences differ: a lost *block* is lost coverage, a smaller honest sample; a lost
+    /// *sample* breaks the continuity of a 171 ms frame, so [`crate::spectrum`] treats any
+    /// movement here as a discontinuity and draws holes rather than a spliced column.
+    lost_samples: Arc<AtomicU64>,
     /// Errors delivered to cpal's error callback, which runs on a notification queue rather
     /// than the audio thread — so locking here is fine.
     last_error: Arc<Mutex<Option<String>>>,
@@ -227,7 +241,9 @@ impl Capture {
         Arc::new(Capture {
             state: Mutex::new(CaptureState::Starting),
             consumer: Mutex::new(None),
+            samples: Mutex::new(None),
             dropped: Arc::new(AtomicU64::new(0)),
+            lost_samples: Arc::new(AtomicU64::new(0)),
             last_error: Arc::new(Mutex::new(None)),
             weighting: Arc::new(AtomicU8::new(chain_index(weighting))),
             recovery: Arc::new(Recovery::new()),
@@ -284,6 +300,29 @@ impl Capture {
         drained
     }
 
+    /// Hands every raw sample waiting in the FFT queue to `f`, oldest first, and returns how
+    /// many.
+    ///
+    /// **In at most two slices, never one**, because a wrapped ring is two runs of memory and
+    /// copying them into one buffer would be a copy this seam does not need. The caller must
+    /// therefore treat the pieces as one stream — which is what [`crate::spectrum::Spectrum`]'s
+    /// split between `ingest` and `publish` is for.
+    pub fn drain_samples<F: FnMut(&[f32])>(&self, mut f: F) -> usize {
+        let mut guard = self.samples.lock().unwrap();
+        let Some(consumer) = guard.as_mut() else {
+            return 0;
+        };
+        let waiting = consumer.slots();
+        let Ok(chunk) = consumer.read_chunk(waiting) else {
+            return 0;
+        };
+        let (first, second) = chunk.as_slices();
+        f(first);
+        f(second);
+        chunk.commit_all();
+        waiting
+    }
+
     pub fn state(&self) -> CaptureState {
         self.state.lock().unwrap().clone()
     }
@@ -291,6 +330,12 @@ impl Capture {
     /// Blocks lost to queue overflow since startup. Lost coverage, by construction.
     pub fn dropped(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Raw samples lost to FFT-queue overflow since startup. A cumulative counter rather than a
+    /// flag: [`crate::spectrum::Spectrum::sync_stream`] only needs to know that it *moved*.
+    pub fn lost_samples(&self) -> u64 {
+        self.lost_samples.load(Ordering::Relaxed)
     }
 
     /// Streams successfully built since startup.
@@ -543,6 +588,19 @@ fn build(capture: &Arc<Capture>, activation: session::Activation) -> Result<cpal
         .clamp(16, 512);
     let (mut producer, consumer) = RingBuffer::<BlockSummary>::new(capacity);
 
+    // The FFT tap, at the same ~1 s as the block queue and deliberately so: both pipelines then
+    // survive exactly the same stall, and a picture that went blind while the number kept
+    // reading would be the two halves of the screen disagreeing about the same silence. 48000
+    // `f32` is 192 KB, allocated once per stream.
+    //
+    // Overflow here is **not** the same failure as overflow above. A lost block is a smaller
+    // honest sample; a lost sample is a hole in the middle of a 171 ms frame, and rtrb drops the
+    // *newest* on a full queue, so what survives is also older than the slot it would be drawn
+    // in. `spectrum.rs` therefore treats the counter moving as a discontinuity and draws holes.
+    let sample_capacity = (config.sample_rate as usize).clamp(FFT_N * 2, 192_000);
+    let (mut sample_producer, sample_consumer) = RingBuffer::<f32>::new(sample_capacity);
+    let lost_samples = Arc::clone(&capture.lost_samples);
+
     // Interleaved frame stride. Channel 0 only when the stream reports more than one channel
     // (spec §3.3, §16.9): averaging correlated channels moves the level by up to 6 dB and
     // would make the calibration offset depend on the channel count. `chunks_exact(1)` is the
@@ -583,6 +641,25 @@ fn build(capture: &Arc<Capture>, activation: session::Activation) -> Result<cpal
                 // half another.
                 chains.sync();
 
+                // ─── the FFT tap (spec §3.3) ───────────────────────────────────────────────
+                // **Raw, ahead of the weighting chain below**, which is what keeps the picture
+                // unweighted in every meter mode (spec §7.2) and the two pipelines independent.
+                // One reserve-and-fill rather than a push per sample, so the block costs one
+                // atomic rather than 1024 — and `fill_from_iter` is the gather for the
+                // multichannel case, since channel 0 of an interleaved buffer is not a slice.
+                let frames = data.len() / stride;
+                let taken = match sample_producer.write_chunk_uninit(frames) {
+                    Ok(chunk) => chunk.fill_from_iter(data.chunks_exact(stride).map(|f| f[0])),
+                    Err(rtrb::chunks::ChunkError::TooFewSlots(free)) => sample_producer
+                        .write_chunk_uninit(free)
+                        .map(|chunk| chunk.fill_from_iter(data.chunks_exact(stride).map(|f| f[0])))
+                        .unwrap_or(0),
+                };
+                if taken < frames {
+                    lost_samples.fetch_add((frames - taken) as u64, Ordering::Relaxed);
+                }
+                // ───────────────────────────────────────────────────────────────────────────
+
                 for frame in data.chunks_exact(stride) {
                     // f32 → f64 at the block boundary, and all DSP in f64 from here on: `03`
                     // measured f32 filter state degrading the level by +1.7 dB with a DC
@@ -622,6 +699,7 @@ fn build(capture: &Arc<Capture>, activation: session::Activation) -> Result<cpal
     eprintln!("capture: running {facts:?}");
 
     *capture.consumer.lock().unwrap() = Some(consumer);
+    *capture.samples.lock().unwrap() = Some(sample_consumer);
     *capture.state.lock().unwrap() = CaptureState::Running(facts);
 
     Ok(stream)

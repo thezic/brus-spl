@@ -28,12 +28,20 @@ use crate::capture::BlockSummary;
 /// Chosen for **retirement smoothness**: a retiring slot is 1/600 of the energy at a 60 s
 /// window. At 1 s slots it is 1/60, and on a 10 s window 1/10, which stair-steps visibly once a
 /// second.
-const SLOT_MS: u64 = 100;
+///
+/// `pub(crate)` for [`crate::spectrum`], which draws **one column per slot, the same slots as
+/// this ring** (spec §7.1). Shared rather than restated so the two rings cannot drift apart —
+/// a column indexed against a different slot length would put the picture's right edge
+/// somewhere other than `now_slot`.
+pub(crate) const SLOT_MS: u64 = 100;
 
 /// The ring is allocated at the longest permitted window, always — 1200 slots ≈ 19 KB,
 /// permanently (spec §6.3). A window-length change is then nothing but *how far back do I sum*,
 /// so it re-slices rather than resets, and spec §8.3's fixed 10 s calibration slice is free.
-const RING_SLOTS: u64 = 1200;
+///
+/// `pub(crate)` for the same reason as [`SLOT_MS`]: the column ring is the same 1200 slots at
+/// 32 `f32` apiece (spec §9.2), so the two histories reach exactly as far back as each other.
+pub(crate) const RING_SLOTS: u64 = 1200;
 
 /// NOW is `None` when no block has arrived for this long (spec §6.9).
 ///

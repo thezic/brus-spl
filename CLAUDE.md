@@ -8,7 +8,7 @@ A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: it
 
 **Implementation runs from `.scratch/spl-meter-build/`** — `map.md` is the index, `issues/b01`–`b13` are the tickets. **Read that map before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b13` here) are deliberately distinct.
 
-The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus five components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. Tier 1 is code-complete through `b07`; `b08` is the device pass that closes the tier.
+The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus five components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. **Tier 1 is closed**, device pass included. Tier 2 is under way: `b09` added `spectrum.rs` — the FFT tap, the third-octave banding and the 1200-column ring — but nothing of it is on the wire or on screen yet, which is `b10` and `b11`.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
@@ -30,7 +30,7 @@ Rust-only checks, run from `src-tauri/`:
 cargo check
 cargo clippy
 cargo fmt
-cargo test                     # 96 tests; hardware-free and instant, deliberately
+cargo test                     # 114 tests; hardware-free and instant, deliberately
 cargo test -- --ignored        # the one test that opens the real microphone (b07's supervisor)
 
 cargo check --target aarch64-apple-ios --lib   # typechecks the iOS-only AVAudioSession code

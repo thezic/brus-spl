@@ -3,6 +3,7 @@ pub mod capture;
 pub mod metrics;
 pub mod session;
 pub mod settings;
+pub mod spectrum;
 pub mod weighting;
 
 use std::time::Instant;

@@ -643,7 +643,7 @@ colour scale that means the same thing on every device.*
 
 | | | Why |
 |---|---|---|
-| Analysis | **N = 8192**, **Hann**, one frame per 100 ms slot | At N=2048 everything below **126 Hz** is bin-borrowing — the whole dB(C) region (`07` f2). N=8192 gives 5.86 Hz bins and resolves every band from 16 Hz up, at a 171 ms frame. |
+| Analysis | **N = 8192**, **Hann**, one frame per 100 ms slot | At N=2048 everything below **126 Hz** is bin-borrowing — the whole dB(C) region (`07` f2). N=8192 gives 5.86 Hz bins and resolves every band from **31.5 Hz** up, at a 171 ms frame — `07` wrote 16 Hz, and `b09` measured the four rows below 31.5 Hz as narrower than one bin (§13.12). |
 | Rows | **32 fixed one-third-octave bands, 12.5 Hz–16 kHz nominal** | Nothing is fabricated (one starved band vs 54 of 220 for a pixel-resolution log axis), **and the colour scale stops moving** — energy-summed rows scale with row bandwidth, so 24 rows read ~10 dB hotter than 220 on the identical signal (`07` f3, f4). |
 | Cell value | **Band energy — the sum of bin powers in the band, never their mean** | Pink noise has equal energy per third-octave by definition, so an honest display draws it flat. `sum` does, within 1.5 dB above 32 Hz; `mean` invents a **32 dB roll-off** (`07` f1). |
 | Columns | **one per 100 ms slot**, the same slots as the energy ring | Free rather than a new cadence. |
@@ -1324,11 +1324,29 @@ copy** (`06`).
 Capture does not survive backgrounding (§4.3). The idle timer is disabled so the screen does not
 sleep mid-talk, but leaving the app stops measurement.
 
-### 13.12 The lowest band on the picture is the one band the picture cannot honestly draw
+### 13.12 The bottom four rows of the picture cannot be honestly drawn
 
-At N=8192 the **12.5 Hz band is narrower than one bin** (2.9 Hz against 5.86 Hz) and is interpolated
-from the nearest bin. N=16384 resolves all 32 bands, at the cost of a 341 ms frame; there is no
-evidence yet that infrasound at 12.5 Hz matters more than that costs (`07`).
+At N=8192 the **12.5, 16, 20 and 25 Hz bands are all narrower than one bin** (2.9, 3.7, 4.6 and
+5.8 Hz against 5.86 Hz) and each reports a bin's worth of spectrum through a narrower window.
+N=16384 resolves all 32 bands, at the cost of a 341 ms frame; there is no evidence yet that
+infrasound at 12.5 Hz matters more than that costs (`07`).
+
+**Corrected by `b09` in two places, both by measurement.** This section used to name the 12.5 Hz band
+as *the* one, and §16.5's borrow as what makes it interpolated. Neither survives contact with the
+arithmetic. Four rows are narrower than a bin, not one — and *which* of them actually **borrows** is a
+function of the sample rate, because a narrow band gets a bin whenever one happens to fall inside it:
+at 48 kHz the 12.5 Hz band keeps bin 2 and the borrowing row is **20 Hz**, which takes bin 3 from its
+neighbour; at 44.1 kHz the 12.5 Hz band borrows and nothing else does. So the row that is fabricated
+**moves under a route change**. The substance is unchanged and is if anything stronger: the bottom of
+the picture is interpolated whether or not any row borrows, and the borrow was never the reason.
+
+A second, smaller correction to the same arithmetic, and it reaches higher up the picture: a band
+sums a **whole number of bins**, so it measures `n·df` of spectrum where its edges ask for
+`f_hi − f_lo`. On a genuinely flat signal that ripple is under 0.1 dB at 1 kHz, ±0.8 dB around 250 Hz,
+and **−1.95 dB at 40 Hz**, where the band wants 1.57 bins and gets 1. It is not noise — it is
+predictable in closed form from the band edges and the rate — so §14.3's "pink noise draws flat"
+means flat **around that prediction**. Under 2 % of a 60 dB colour scale, and a consequence of
+§16.5's bin-centre rule rather than a defect in it.
 
 ### 13.13 At a 120 s span the picture is about texture, not events
 
@@ -1464,13 +1482,22 @@ Small, mechanical, and listed so they can be vetoed in review rather than discov
    small and purpose-built for exactly the audio-callback boundary.
 3. **`objc2-foundation` as a direct dependency**, version-matched to `objc2-avf-audio`'s constraint so
    the objc2 graph does not duplicate — needed for the `NSNotificationCenter` observer in §4.2.
-4. **The FFT's power normalisation:** with `S1 = Σ w[n]`, one-sided bin power is
-   `P_k = 2·|X_k|² / S1²`, so a full-scale sine at a bin centre reads its own mean square (−3.01 dBFS)
-   — **the same dBFS convention as the meter**, which is what lets one calibration offset shift both.
-   `07` measured with its prototype's own normalisation and never wrote one down; §7.1's −90 … −30 dBFS
-   colour window is stated against this one.
+4. **The FFT's power normalisation:** with `S2 = Σ w[n]²`, one-sided bin power is
+   `P_k = 2·|X_k|² / (N·S2)`, so a full-scale sine at a bin centre reads its own mean square
+   (−3.0103 dBFS) **in its band** — **the same dBFS convention as the meter**, which is what lets one
+   calibration offset shift both. `07` measured with its prototype's own normalisation and never wrote
+   one down; §7.1's −90 … −30 dBFS colour window is stated against this one.
+
+   **Corrected by `b09`, and the first form was wrong by a fixed amount rather than in principle.**
+   This item originally read `P_k = 2·|X_k|²/S1²` with `S1 = Σ w[n]`. That is the **coherent** gain,
+   correct for reading a tone off the single bin it peaks in — but §7.1's cell value is not a bin, it
+   is the **sum of the bins in a band**, and a Hann window puts a third of a tone's energy in the two
+   bins either side of the peak. Summed, `2/S1²` reads **+1.7609 dB = 10·log₁₀(1.5)** high, uniformly,
+   for a tone and for noise alike. The sentence after the formula is the intent, and only the
+   noise-power normalisation delivers it: with `2/(N·S2)`, `Σ_k P_k` over every bin is the signal's
+   mean square, so the 32 bands add back up to the meter's own unweighted dBFS. Measured both ways.
 5. **Band assignment:** sum the power of bins whose **centre** falls in `[f_lo, f_hi)`; if no bin
-   falls in a band, take the nearest bin's power (the "borrow" that makes the 12.5 Hz band
+   falls in a band, take the nearest bin's power (the "borrow" that makes a band narrower than a bin
    interpolated, §13.12).
 6. **The 10 Hz tick is a dedicated std thread** with a sleep-until loop on `Instant`, emitting via
    `AppHandle`. `05` and `08` require the cadence and its ownership but not the mechanism.
@@ -1502,6 +1529,8 @@ list exists so a reader who goes back to a ticket is not misled.
 | `05` d11's premise that `--` and zero coverage arrive together | **A zero-power block is a gap slot, not a covered one** (`09`) — exact zeros mean `Σn > 0` while the level is undefined. A denied mic reads `0s of 60s`, not `60s of 60s`. |
 | `05`'s reset/clear table | **Gains a fourth column, entirely empty** (`08`) — nothing clears the spectrogram ring. |
 | This spec's own §6.11 table, which had no column for the smoother | **Gains one, with a single entry: a weighting change zeroes it** (`b04`) — without it the same row's max-hold clear is defeated within one block, measured 7 dB high. The first correction the build map has made to this spec rather than to a ticket. |
+| This spec's own §16.4, `P_k = 2·|X_k|²/S1²` | **`2·|X_k|²/(N·S2)`** (`b09`) — the first is the coherent gain, right for one bin and **+1.76 dB high for the band sum** §7.1 actually draws. Its own stated intent, *the same dBFS convention as the meter*, is what the second delivers. The second correction the build map has made to this spec rather than to a ticket. |
+| §13.12's "the 12.5 Hz band is the one band the picture cannot honestly draw" | **Four rows are narrower than a bin, and which one *borrows* depends on the rate** (`b09`) — 20 Hz at 48 kHz, 12.5 Hz at 44.1 kHz. The substance stands; the borrow was never the reason. |
 | `06` d5's default list `(None, C, F, 60 s)` | **`(None, C, S, 60 s)`** — `09` d5 changed the default time weighting after `06` was written. |
 | `07` d8's "the picture is literally what is inside the number" | Read as **the same span, not the same data** (`08` d5) — Reset does not clear the picture. |
 | `07`'s ~52 px legend gutter | **58 px** (`09` f6) — `dBFS/band` is four characters longer than `dB/band` and overprinted the `now` label. |

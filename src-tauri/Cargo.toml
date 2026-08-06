@@ -27,6 +27,10 @@ cpal = "0.18.1"
 # purpose-built for exactly this boundary; hand-rolling one correctly is not a
 # 15-line job the way the biquad recursion is.
 rtrb = "0.3"
+# The spectrogram's FFT (spec §16.1), a real-input wrapper over `rustfft`. Real transforms
+# are ~2× the throughput of a complex one at N=8192, and this is the only heavy arithmetic
+# in the app.
+realfft = "3.5"
 
 # iOS-only: configure the AVAudioSession that cpal deliberately does not touch.
 # Version and feature set deliberately match cpal's own iOS dependency so the

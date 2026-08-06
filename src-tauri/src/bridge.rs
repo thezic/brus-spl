@@ -31,6 +31,7 @@ use crate::capture::{Capture, CaptureState};
 use crate::metrics::{Levels, Metrics, TimeWeighting};
 use crate::session::{self, MicPermission};
 use crate::settings::{Settings, SettingsStore, Unit};
+use crate::spectrum::Spectrum;
 use crate::weighting::Weighting;
 
 /// The event name the frontend listens for. **Events need no capability entry** — `core:default`
@@ -155,16 +156,21 @@ pub struct Tick {
 
 /// Everything the app owns, and the only state either side of the bridge has.
 ///
-/// **Lock order is `metrics` then `settings`, everywhere, without exception.** Both are taken
-/// together by the tick and by three of the six commands, so a consistent order is the whole of
-/// the deadlock argument. Neither is ever taken from the audio callback — the one thread boundary
-/// that touches it is the SPSC queue (spec §6.10).
+/// **Lock order is `metrics`, then `spectrum`, then `settings`, everywhere, without exception.**
+/// Two or three of them are taken together by the tick and by three of the six commands, so a
+/// consistent order is the whole of the deadlock argument. None is ever taken from the audio
+/// callback — the thread boundaries that touch it are the two SPSC queues (spec §6.10).
 pub struct AppState {
     pub capture: Arc<Capture>,
     /// The ring, the smoother and the hold. `Mutex` rather than owned by the tick thread because
     /// spec §6.11's side effects are commands: a weighting change has to clear the window, and it
     /// arrives on Tauri's command thread.
     pub metrics: Mutex<Metrics>,
+    /// The FFT frame buffer and the column ring. Behind a `Mutex` for one reason only —
+    /// `b10`'s `get_spectrogram` arrives on Tauri's command thread and reads the same history
+    /// the tick is writing. **No command mutates it**: spec §6.11's fourth column is empty, so
+    /// nothing the reader can press clears, re-slices or otherwise disturbs the picture.
+    pub spectrum: Mutex<Spectrum>,
     /// The four settings and their file. A write goes to disk (spec §10) — not something to do
     /// from an audio path, and this is not one.
     pub settings: Mutex<SettingsStore>,
@@ -174,9 +180,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// The spectrum is **derived** from the metrics rather than passed in beside it, so the two
+    /// pipelines cannot start at different sample rates — the one number every band edge, every
+    /// weighting coefficient and the coverage arithmetic are all computed from.
     pub fn new(capture: Arc<Capture>, metrics: Metrics, settings: SettingsStore) -> AppState {
         AppState {
             capture,
+            spectrum: Mutex::new(Spectrum::new(metrics.sample_rate())),
             metrics: Mutex::new(metrics),
             settings: Mutex::new(settings),
             blocks: AtomicU64::new(0),
@@ -287,7 +297,23 @@ fn collect(state: &AppState, now: Instant) -> Tick {
     let cal = metrics.leq_over(CAL_SLICE_S);
     // After `levels`, which is what advanced the ring.
     let now_slot = metrics.now_slot();
+    let sample_rate = metrics.sample_rate();
     drop(metrics);
+
+    // The second pipeline, drained on the same tick and against the same `now_slot` — which is
+    // the whole of "one column per 100 ms slot, the same slots as the energy ring" (spec §7.1).
+    // It is deliberately *not* under the metrics lock: the two share nothing but that index, and
+    // the FFT is the one piece of arithmetic in this app expensive enough to be worth not holding
+    // a lock across.
+    let mut spectrum = state.spectrum.lock().unwrap();
+    spectrum.sync_stream(
+        state.capture.builds(),
+        state.capture.lost_samples(),
+        sample_rate,
+    );
+    state.capture.drain_samples(|chunk| spectrum.ingest(chunk));
+    spectrum.publish(now_slot);
+    drop(spectrum);
 
     let settings = state.settings.lock().unwrap().settings();
 

@@ -377,6 +377,42 @@ difference matter (spec §7).
   the honest way to do that is [`b12`](issues/b12-re-sign-and-install-rehearsal.md)'s own gesture;
   and **`denied`**, because the microphone was granted.
 
+- [Spectrum analysis and the column ring](issues/b09-spectrum-analysis-and-the-column-ring.md)
+  — **Built and green: 114 tests, and the ring driven against a real microphone at both `--debug`
+  and `--release`. Spec §7.1's parameters needed no correction; §16 needed two, and the first is
+  worth the ticket on its own.** **§16.4's power normalisation is right for a bin and 1.76 dB wrong
+  for a band, and the band is what this display draws** — `2·|X_k|²/S1²` is the coherent gain, so a
+  full-scale sine reads −3.01 dBFS in its *peak bin* while the **sum** across the band reads
+  `0.5 + 0.125 + 0.125` against a true 0.5, a flat `10·log₁₀(1.5)` high for a tone and for noise
+  alike. §16.4's own stated intent — *the same dBFS convention as the meter, which is what lets one
+  calibration offset shift both* — is delivered only by the noise-power form `2/(N·S2)`, and the
+  property that buys is now a test: **the 32 bands add back up to the signal's own unweighted
+  dBFS.** It would have been invisible on screen, a uniform shift of a colour window §7.1 already
+  expects to move, which is precisely the case §16 exists for. Second: **which band *borrows* is a
+  function of the sample rate** — at 48 kHz the 12.5 Hz row keeps bin 2 and it is **20 Hz** that
+  borrows, at 44.1 kHz the reverse — so §13.12 named the wrong row, and the rate-independent claim
+  (**four rows are narrower than a bin**) is the stronger one. A third finding is the same
+  arithmetic reaching higher: **the residual ripple in a flat picture is band-edge quantisation,
+  predictable in closed form** — under 0.1 dB at 1 kHz and **−1.95 dB at 40 Hz** — so §14.3's *pink
+  draws flat* means flat *around the prediction*, `b02` finding 1's shape exactly. Not fixed:
+  fractional edges would re-litigate §16.5 for under 2 % of a 60 dB scale. **White noise gets the
+  companion test §14.3 lacks** — it must rise exactly `10·log₁₀(n_bins)` per row, which kills `mean`
+  as a cell value outright. The FFT tap is a second `rtrb` queue at the same ~1 s as the block queue,
+  and finding 4 is that **its overflow is not the block queue's**: rtrb drops the *newest*, so the
+  survivors are older than the slot they would be drawn in, and a lost sample is therefore a
+  discontinuity — holes, never a splice. The one piece of design the spec left open is the slot
+  assignment, and it is **`now_slot` places the columns, the sample count paces them**: `k` hops
+  completed in a drain are the `k` slots ending at `now_slot`, which is what makes §9.2's backlog
+  rule correct rather than merely robust. Its consequence bit the live pass first: a tick completing
+  **zero** hops files nothing and the next fills that slot retroactively, so reading the ring at the
+  publish instant shows holes that are not holes — measured two slots behind instead, it is **20 of
+  20, sustained, with zero lost samples**. Live at 48 kHz: a quiet room peaks in the **50 Hz row at
+  −53 dBFS** with everything above 1 kHz below −80 — the rumble stripe, present before anyone speaks
+  — and the whole drain-and-transform costs **50–125 µs per tick in release**, 0.1 % of a tick, which
+  settles §16.1's throughput argument. Untested and said so: the picture is **not on the wire**, so
+  nothing has been *seen* — §14.3's eyeball tests are asserted numerically, arm's-length legibility
+  is untouched, and nothing has run on the phone.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
@@ -393,11 +429,11 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
 - **Arm's-length legibility in a dim venue — the hero half is answered, the band half is not.**
   `b06` established on a desk that `--` reads as a muted absence rather than a redaction bar, and
   `b08` confirmed **on the phone at arm's length** that it reads fine. What remains is the part
-  that was always the risk: **~6 px per band, 32 bands over ~205 px**, untouched and unbuildable
-  until [`b09`](issues/b09-spectrum-analysis-and-the-column-ring.md). If the answer is "no" it is a
-  correction to the band count or the ~200 px height, so it still wants answering *before*
-  [the canvas](issues/b11-the-spectrogram-canvas.md) rather than after. Neither half has been seen
-  *dim*.
+  that was always the risk: **~6 px per band, 32 bands over ~205 px**. `b09` built the bands but put
+  nothing on screen, so this is unchanged and now waits on
+  [the canvas](issues/b11-the-spectrogram-canvas.md) itself. If the answer is "no" it is a correction
+  to the band count or the ~200 px height, so it still wants answering **early in `b11` rather than
+  after polishing it**. Neither half has been seen *dim*.
 - **`get_spectrogram` in a WKWebView on the phone.** 276 KB of JSON at a 120 s span parses in
   a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
   the command, aggregating in Rust — costs the single-aggregator property, so it is a trade
@@ -434,12 +470,16 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   and eight smaller calls were made by the spec rather than by any ticket, and listed there
   expressly so they could be vetoed in review rather than discovered in code. A ticket that
   finds one of them wrong should say so in its resolution rather than working around it.
-  **Nothing is vetoed so far.** §16.2, §16.3, §16.4, §16.6, §16.7, §16.9 and §16.11 have met code
-  and all seven stand — though `b03` found §16.7's *rationale* unreliable while its rule holds, which
-  is the one case where reading the justification rather than the clause would have produced wrong
-  behaviour. §16.3 is asserted rather than assumed: `Cargo.lock` holds **exactly one `objc2` and one
-  `objc2-foundation`**, so the graph did not duplicate. §16.1, §16.5, §16.8 and §16.10 are still
-  untouched.
+  **Ten of the eleven have now met code, and exactly one is vetoed: §16.4.** `b09` found its formula
+  is the coherent gain — correct for a bin, **+1.76 dB for the band sum §7.1 actually draws** — and
+  replaced it with `2/(N·S2)`, which is what its own stated intent required. §16.2, §16.3, §16.6,
+  §16.7, §16.9 and §16.11 stand, as do §16.1, §16.5 and §16.8, all three met by `b09`: `realfft`
+  needed no framework entry, the bin-centre rule's quantisation ripple is bounded and predictable,
+  and the zero-power gap rule works as written. `b03` found §16.7's *rationale* unreliable while its
+  rule holds, which is the one case where reading the justification rather than the clause would have
+  produced wrong behaviour. §16.3 is asserted rather than assumed: `Cargo.lock` holds **exactly one
+  `objc2` and one `objc2-foundation`**, so the graph did not duplicate. **§16.10 is the last one
+  untouched.**
 
 ## Out of scope
 
