@@ -39,6 +39,19 @@ objc2-avf-audio = { version = "0.3", default-features = false, features = [
     "block2",
 ] }
 block2 = "0.6"
+# `NSNotificationCenter`, for the interruption observer cpal never surfaces (spec §4.2,
+# §16.3). Version-matched to objc2-avf-audio's own constraint, and features pared to the
+# five the observer touches, so the objc2 graph does not duplicate.
+objc2-foundation = { version = "0.3", default-features = false, features = [
+    "std",
+    "block2",
+    "NSDictionary",
+    "NSNotification",
+    "NSObject",
+    "NSOperation",
+    "NSString",
+    "NSValue",
+] }
 # For `runtime::Bool` in the requestRecordPermission completion block. Range
 # matches objc2-avf-audio's own constraint so the objc2 graph does not duplicate.
 objc2 = { version = ">=0.6.2, <0.8.0", default-features = false, features = ["std"] }

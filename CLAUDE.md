@@ -30,7 +30,8 @@ Rust-only checks, run from `src-tauri/`:
 cargo check
 cargo clippy
 cargo fmt
-cargo test                     # the 34-row weighting-filter table (b02), at 4 sample rates
+cargo test                     # 96 tests; hardware-free and instant, deliberately
+cargo test -- --ignored        # the one test that opens the real microphone (b07's supervisor)
 
 cargo check --target aarch64-apple-ios --lib   # typechecks the iOS-only AVAudioSession code
 ```
@@ -100,7 +101,11 @@ Permission wiring, all of which is in place:
 - `src-tauri/Info.plist` — `NSMicrophoneUsageDescription`. Serves **both** iOS and macOS (iOS also picks up `Info.ios.plist`; macOS does not). Missing this key is a process kill, not a warning.
 - `src-tauri/Entitlements.plist` — `com.apple.security.device.audio-input`, referenced from `bundle.macOS.entitlements`. Needed because Tauri enables Hardened Runtime by default, so *signed* macOS builds fail capture without it. Unsigned `tauri dev` binaries don't need it, which makes the dev loop the permissive case and the shipped bundle the strict one.
 
-This now lives in `src-tauri/src/session.rs` (iOS-only, behind `cfg(target_os = "ios")`) and `src-tauri/src/capture.rs`, built by ticket `b01`, which replaced the throwaway spike. Spec §3 is the authority. Two properties of that code are load-bearing and easy to undo by accident:
+This now lives in `src-tauri/src/session.rs` (iOS-only, behind `cfg(target_os = "ios")`) and `src-tauri/src/capture.rs`, built by ticket `b01`, which replaced the throwaway spike. Spec §3 is the authority.
+
+**An interruption kills the stream permanently and tells cpal nothing** (spec §4, ticket `b07`). Neither CoreAudio backend raises cpal's `DeviceChanged`, and a Siri call reached Rust as no error at all — the only symptom was `AVAudioSession.inputNumberOfChannels` going 1 → 0 and staying there. So `capture.rs` runs a **supervisor loop** on the capture thread that rebuilds the stream on any of three signals: an `AVAudioSessionInterruptionNotification` observer, a cpal stream error, and a 10 Hz poll of `inputNumberOfChannels` from the tick. Recovery must `setActive(true)` **before** rebuilding — a rebuild against a deactivated session fails with `InvalidInput: channel count must be at least 1`, which is the *same* error as a never-set category, so it reads as a regression in `b01`'s setup code and is not one. A rebuild costs ~210 ms of real dead air, over §6.9's 200 ms staleness threshold, so `--` on screen during a recovery is expected.
+
+Two properties of that code are load-bearing and easy to undo by accident:
 
 - **The session is configured before cpal is touched, and every value is read back as ground truth** — `sampleRate`, `inputNumberOfChannels`, `mode`, `IOBufferDuration`. Apple documents the rate and buffer duration as *preferences*. The `mode` read-back is not ceremony: `AVAudioSessionModeMeasurement` is worth **21 dB of fixed processing gain**, so if it silently fails to apply, the stored calibration offset is wrong by ~21 dB with nothing on screen to show it.
 - **The capture callback does the minimum and allocates nothing** — f32→f64 at the block boundary, channel 0 only when the stream reports more than one (never average; it moves the level by up to 6 dB and would make calibration depend on channel count), no DC blocker, and one `{sum_sq, n, t}` summary pushed into a bounded lock-free SPSC queue (`rtrb`). A queue overflow must degrade into lost coverage, never a wrong number.

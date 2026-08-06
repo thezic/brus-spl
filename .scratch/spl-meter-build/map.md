@@ -111,11 +111,11 @@ is done when it is closed.
 
 If days run short, drop in this order and no other:
 
-1. **[Interruption and recovery](issues/b07-interruption-and-recovery.md)** — the only Tier 1
-   ticket that is droppable. Without it an interruption is still *honest*, because §6.4's
-   coverage figure reports the hole; it is simply not *recovered*, and the fix at the venue is
-   to restart the app. Honest-but-manual is an acceptable degradation; nothing else in Tier 1
-   is.
+1. ~~**[Interruption and recovery](issues/b07-interruption-and-recovery.md)**~~ — **built, so
+   this slack is spent.** It was the only droppable Tier 1 ticket: without it an interruption is
+   still *honest*, because §6.4's coverage figure reports the hole; it is simply not *recovered*,
+   and the fix at the venue is to restart the app. Honest-but-manual was an acceptable
+   degradation; nothing else in Tier 1 is. The remaining drop order therefore starts at 2.
 2. **All of Tier 2**, whole. A partial picture is worse than none — §7.1's colour scale only
    means something with the fixed band layout and the legend behind it.
 3. Nothing else. If Tier 1 minus `b07` will not land, the date is the thing that has to move.
@@ -292,6 +292,36 @@ difference matter (spec §7).
   redaction bar, but was never produced by a stream that actually stopped, because nothing here can
   stop one.
 
+- [Interruption and recovery](issues/b07-interruption-and-recovery.md)
+  — **Built and green: 96 tests plus one `#[ignore]`d live one that drives the whole supervisor
+  against two real cpal streams in 0.7 s; the phone half is
+  [the Tier 1 device pass](issues/b08-tier-1-device-pass.md)'s, as `b01`'s was.** Spec §4 needed no
+  correction. The shape is one **supervisor loop on the capture thread** — forced there, because a
+  `cpal::Stream` is `!Send` and stops on drop — waiting on a one-slot mailbox that three unrelated
+  things post to. What §4.2 does *not* say is finding 1: **the health check must ignore any stream
+  that is not `Running`**, because a rebuild publishes `Starting` and a check that fired on it would
+  ask the supervisor to tear down the stream it had just built, one rebuild per tick forever. Two
+  things about cpal came out of reading it rather than running it: **`DeviceChanged`'s doc advice is
+  wrong for this instrument** — "no rebuild is required" is true of the samples and false of
+  coefficients derived from the build-time rate — and **neither CoreAudio backend raises it at all**,
+  only WASAPI and PipeWire, which is `11` probe 2's silence confirmed from the source and the reason
+  the error path is defence while the health check is the mechanism. Finding 3 is two opposite
+  mistakes one line apart: the recovery path must **not** re-ask for the microphone (it blocks on the
+  main queue, twice a second, for the length of a Siri call) and must **not** stop asking either — so
+  it is `Initial` until a build has *succeeded*, not until one has been attempted, or a first failure
+  before the prompt leaves an app that never asks. The loop is designed around **failure being
+  normal**: every `setActive(true)` is refused while another process holds the session, so recovery
+  is just the first attempt that succeeds — 500 ms retry, never give up, log once per run, keep only
+  the *first* reason. §4.2's item 6 turned out to be **zero code and structurally so**: `build`
+  derives the chains from the rate it reads back, a fresh chain is zero-state, and `capture.rs`
+  cannot reach `metrics.rs` to reset a window by accident. The one new number: **a recovery is
+  ~210 dead milliseconds** (209–222, ±4, five runs), which is *over* §6.9's 200 ms threshold and can
+  only be longer on the phone — so every recovery shows `--`, correctly, and half of `b06`'s
+  "`--` was never produced by a stream that actually stopped" is now closed. Five mutations, all
+  caught, each by exactly one test. Untested and said so: **every iOS-specific line** — the observer
+  has never fired and whether `setActive(true)` recovers a deactivated session is the actual question
+  — plus the retry loop, and route-change recovery, which stays in the fog for want of headphones.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
@@ -322,19 +352,28 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   precedence — permission before stream, because a denied microphone still builds a stream — has
   a unit test standing in for a device.
 - **Route-change recovery.** Probe 3 was never run for want of headphones. Do it with
-  headphones to hand.
+  headphones to hand. `b07` built the path it would exercise — plug and unplug mid-measurement,
+  watching `Capture::builds` and the sample rate — and found that **neither CoreAudio backend
+  raises cpal's `DeviceChanged` at all**, so a route change that iOS does not announce is caught
+  by the health check or not at all.
 - **The 200 ms staleness threshold is reasoned, not measured** (§6.9). iOS drain jitter was
   never characterised — `b05` measured the *tick* at a flat 10.00 Hz, but on macOS, where the
   drain has nothing to be jittery about. If `--` flickers in practice, that number is the dial.
+  `b07` added the one measured number either side of it: **a rebuild is ~210 ms of real dead
+  air** on the desk and can only be longer on the phone, so a recovery *will* cross the threshold.
+  That is not an argument for moving it — the audio genuinely stopped — but it does mean the phone
+  will show `--` on every recovery, which the device pass should expect rather than diagnose.
 - **Whether spec [§16](../spl-meter-mvp/spec.md#16-what-this-spec-decides-that-no-ticket-decided)'s
   eleven choices survive contact with code.** `realfft`, `rtrb`, the FFT power normalisation
   and eight smaller calls were made by the spec rather than by any ticket, and listed there
   expressly so they could be vetoed in review rather than discovered in code. A ticket that
   finds one of them wrong should say so in its resolution rather than working around it.
-  **Nothing is vetoed so far.** §16.2, §16.4, §16.6, §16.7, §16.9 and §16.11 have met code and all
-  six stand — though `b03` found §16.7's *rationale* unreliable while its rule holds, which is the
-  one case where reading the justification rather than the clause would have produced wrong
-  behaviour. §16.1, §16.3, §16.5, §16.8 and §16.10 are still untouched.
+  **Nothing is vetoed so far.** §16.2, §16.3, §16.4, §16.6, §16.7, §16.9 and §16.11 have met code
+  and all seven stand — though `b03` found §16.7's *rationale* unreliable while its rule holds, which
+  is the one case where reading the justification rather than the clause would have produced wrong
+  behaviour. §16.3 is asserted rather than assumed: `Cargo.lock` holds **exactly one `objc2` and one
+  `objc2-foundation`**, so the graph did not duplicate. §16.1, §16.5, §16.8 and §16.10 are still
+  untouched.
 
 ## Out of scope
 

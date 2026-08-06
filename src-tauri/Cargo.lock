@@ -741,6 +741,7 @@ dependencies = [
  "cpal",
  "objc2",
  "objc2-avf-audio",
+ "objc2-foundation",
  "objc2-ui-kit",
  "rtrb",
  "serde",

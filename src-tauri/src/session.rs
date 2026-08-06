@@ -53,24 +53,42 @@ pub struct SessionFacts {
     /// screen to show it — so the read-back is checked and a mismatch logged.
     pub measurement_mode: bool,
     pub io_buffer_duration: f64,
-    /// Whether the microphone permission prompt came back granted. Capture starts either
-    /// way: a denied microphone delivers buffers of exact zeros, which spec §6.3 discards at
-    /// drain time, so the meter reads `--` beside `0s of 60s` rather than a plausible lie.
+    /// Whether the microphone permission is granted **now**, read from `recordPermission`
+    /// after the prompt has been answered rather than taken from the prompt's own reply — one
+    /// authority for the question, not two. Capture starts either way: a denied microphone
+    /// delivers buffers of exact zeros, which spec §6.3 discards at drain time, so the meter
+    /// reads `--` beside `0s of 60s` rather than a plausible lie.
     pub permission_granted: bool,
+}
+
+/// Why the session is being configured: the first time, or spec §4.2's recovery.
+///
+/// The only difference is the microphone permission prompt. [`Activation::Initial`] asks for it
+/// and **blocks on the main queue** until the answer arrives; [`Activation::Recovery`] does not,
+/// because by then the question is long since settled and re-asking would put a main-queue
+/// round-trip on the capture thread twice a second for as long as a Siri call lasts.
+///
+/// Everything else — the category, the mode, the two preferences, `setActive(true)` and the
+/// read-back — is deliberately identical, so there is one setup path and one place a value can
+/// come back different from what was asked for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Activation {
+    Initial,
+    Recovery,
 }
 
 /// Configures and activates the session, then reads everything back.
 ///
-/// **Must be called before cpal is touched**, and **must not be called from the main thread**:
-/// the microphone permission completion block is delivered on the main queue, and this waits
-/// for it. The capture thread is the intended caller.
+/// **Must be called before cpal is touched**, and — with [`Activation::Initial`] — **must not be
+/// called from the main thread**: the microphone permission completion block is delivered on the
+/// main queue, and this waits for it. The capture thread is the intended caller.
+///
+/// `setActive(true)` runs on **both** paths, which is spec §4.2 item 3: a cpal stream rebuilt
+/// against a session left deactivated by an interruption fails with `InvalidInput: channel count
+/// must be at least 1` — the same error as a never-set category, and the whole of this ticket's
+/// first trap.
 #[cfg(target_os = "ios")]
-pub fn configure() -> Result<Option<SessionFacts>, String> {
-    use std::sync::mpsc;
-    use std::time::Duration;
-
-    use block2::RcBlock;
-    use objc2::runtime::Bool;
+pub fn configure(activation: Activation) -> Result<Option<SessionFacts>, String> {
     use objc2_avf_audio::{
         AVAudioSession, AVAudioSessionCategoryOptions, AVAudioSessionCategoryRecord,
         AVAudioSessionModeMeasurement,
@@ -89,6 +107,10 @@ pub fn configure() -> Result<Option<SessionFacts>, String> {
         // `Record`, not cpal's example's `PlayAndRecord` — we never play. Options are
         // deliberately empty: no `AllowBluetooth`, because a Bluetooth SCO route forces a low
         // sample rate and an unknown microphone.
+        //
+        // Re-set on the recovery path too. An interruption is not documented to clear the
+        // category, but the preferences are the only lever we have over a *new* route, and
+        // re-asking costs three message sends against a rebuild that is already happening.
         let category = AVAudioSessionCategoryRecord
             .ok_or_else(|| "AVAudioSessionCategoryRecord unavailable".to_string())?;
         let mode = AVAudioSessionModeMeasurement
@@ -104,22 +126,9 @@ pub fn configure() -> Result<Option<SessionFacts>, String> {
             .setPreferredIOBufferDuration_error(PREFERRED_IO_BUFFER_DURATION)
             .map_err(|e| av_err("setPreferredIOBufferDuration:", e))?;
 
-        // Ask explicitly and wait, rather than letting activation raise the prompt implicitly:
-        // the implicit path measures silence for as long as the alert is up, and the stream
-        // built underneath it keeps delivering exact zeros afterwards.
-        //
-        // This blocks until the completion block fires, which the OS delivers on the main
-        // queue — so it MUST NOT run on the main thread. `requestRecordPermission` is
-        // deprecated in favour of `AVAudioApplication` (iOS 17+) but still functional and
-        // works on older devices; spec §9.4 reads `recordPermission` for the *display* state,
-        // which is a separate question from asking.
-        let (tx, rx) = mpsc::channel::<bool>();
-        let block = RcBlock::new(move |granted: Bool| {
-            let _ = tx.send(granted.as_bool());
-        });
-        #[allow(deprecated)]
-        session.requestRecordPermission(&block);
-        let permission_granted = rx.recv_timeout(Duration::from_secs(60)).unwrap_or(false);
+        if activation == Activation::Initial {
+            request_permission();
+        }
 
         session
             .setActive_error(true)
@@ -132,18 +141,51 @@ pub fn configure() -> Result<Option<SessionFacts>, String> {
             measurement_mode: &*granted_mode == mode,
             mode: granted_mode.to_string(),
             io_buffer_duration: session.IOBufferDuration(),
-            permission_granted,
+            permission_granted: permission() == Some(MicPermission::Granted),
         };
         log_mismatches(&facts);
         Ok(Some(facts))
     }
 }
 
+/// Raises the microphone prompt and waits for the answer. Blocks; never call it on the main
+/// thread.
+///
+/// Asked explicitly rather than left to activation to raise implicitly: the implicit path
+/// measures silence for as long as the alert is up, and the stream built underneath it keeps
+/// delivering exact zeros afterwards.
+///
+/// `requestRecordPermission` is deprecated in favour of `AVAudioApplication` (iOS 17+) but still
+/// functional and works on older devices; spec §9.4 reads `recordPermission` for the *display*
+/// state, which is a separate question from asking.
+#[cfg(target_os = "ios")]
+fn request_permission() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    use block2::RcBlock;
+    use objc2::runtime::Bool;
+    use objc2_avf_audio::AVAudioSession;
+
+    let (tx, rx) = mpsc::channel::<bool>();
+    let block = RcBlock::new(move |granted: Bool| {
+        let _ = tx.send(granted.as_bool());
+    });
+    // SAFETY: message send to the process-wide singleton; the block is copied by the runtime.
+    #[allow(deprecated)]
+    unsafe {
+        AVAudioSession::sharedInstance().requestRecordPermission(&block);
+    }
+    // The answer itself is read back from `recordPermission` in `configure`; this only waits
+    // for the alert to be dismissed.
+    let _ = rx.recv_timeout(Duration::from_secs(60));
+}
+
 /// No `AVAudioSession` off iOS. On the macOS dev loop cpal takes the default input device as
 /// it finds it, and TCC attributes the microphone request to the responsible parent process,
 /// which makes the desk the permissive case and the phone the strict one (spec §3.4).
 #[cfg(not(target_os = "ios"))]
-pub fn configure() -> Result<Option<SessionFacts>, String> {
+pub fn configure(_activation: Activation) -> Result<Option<SessionFacts>, String> {
     Ok(None)
 }
 
@@ -197,32 +239,140 @@ pub fn permission() -> Option<MicPermission> {
     None
 }
 
-/// Re-reads the live session without changing it. iOS only; `None` elsewhere.
+/// The live `inputNumberOfChannels` — spec §4.2 item 4's **pollable health check**. `None` off
+/// iOS, where there is no session to interrogate.
 ///
-/// Separate from [`configure`] because a route change moves these values under a running
-/// stream, and asking again is the only way to notice.
+/// One property rather than the whole read-back because this runs on the 10 Hz tick, and because
+/// it is the only value `11` probe 2 measured moving: an interruption took it **1 → 0 and left it
+/// there**, with no stream error and no other symptom. It is checked *independently of* the
+/// interruption notification precisely because nothing guarantees the notification arrives —
+/// probe 2 saw the stream die permanently and not one thing reached Rust.
 #[cfg(target_os = "ios")]
-pub fn current_facts() -> Option<SessionFacts> {
-    use objc2_avf_audio::{AVAudioSession, AVAudioSessionModeMeasurement};
+pub fn input_channels() -> Option<isize> {
+    use objc2_avf_audio::AVAudioSession;
 
-    // SAFETY: read-only property access on the process-wide singleton.
-    unsafe {
-        let session = AVAudioSession::sharedInstance();
-        let granted_mode = session.mode();
-        Some(SessionFacts {
-            sample_rate: session.sampleRate(),
-            input_channels: session.inputNumberOfChannels(),
-            measurement_mode: AVAudioSessionModeMeasurement
-                .is_some_and(|expected| &*granted_mode == expected),
-            mode: granted_mode.to_string(),
-            io_buffer_duration: session.IOBufferDuration(),
-            permission_granted: true,
-        })
-    }
+    // SAFETY: read-only property access on the process-wide singleton, from the tick thread.
+    unsafe { Some(AVAudioSession::sharedInstance().inputNumberOfChannels()) }
 }
 
+/// No session, so nothing to poll — which makes the health check a documented no-op on the desk
+/// and [`crate::capture::needs_recovery`] the only part of it that can be tested there.
 #[cfg(not(target_os = "ios"))]
-pub fn current_facts() -> Option<SessionFacts> {
+pub fn input_channels() -> Option<isize> {
+    None
+}
+
+/// The two halves of `AVAudioSessionInterruptionNotification` (spec §4.2 item 2).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Interruption {
+    /// The system has taken the session: a call, Siri, an alarm. Nothing to do — reactivating
+    /// while another process holds the session fails, and the coverage figure is already
+    /// reporting the hole.
+    Began,
+    /// The interruption is over and the session may be reactivated.
+    Ended,
+}
+
+/// A live `NSNotificationCenter` observation. Dropping it does not unregister — see
+/// [`observe_interruptions`] — so it exists to make the lifetime visible rather than to manage
+/// it.
+#[cfg(target_os = "ios")]
+pub struct InterruptionObserver {
+    _token:
+        objc2::rc::Retained<objc2::runtime::ProtocolObject<dyn objc2::runtime::NSObjectProtocol>>,
+}
+
+/// Observes `AVAudioSessionInterruptionNotification`, calling `f` with each half.
+///
+/// **Forced rather than chosen** (spec §4.2 item 2): cpal never surfaces interruptions, and on the
+/// CoreAudio backends it never surfaces route changes either — `DeviceChanged` is raised only by
+/// the WASAPI and PipeWire hosts. Without this observer the only signal an interruption ever
+/// produces in this process is [`input_channels`] going to zero.
+///
+/// `queue: None` means the block runs on whichever thread posted the notification, which is what
+/// we want: it does nothing but set a flag and wake the supervisor.
+///
+/// **The observation is app-lifetime and is deliberately never removed.** The block-based API
+/// hands back an opaque token that the notification centre itself retains until
+/// `removeObserver:`; the supervisor loop that owns ours never returns, so a `Drop` that
+/// unregisters would be code that cannot run.
+#[cfg(target_os = "ios")]
+pub fn observe_interruptions<F>(f: F) -> Option<InterruptionObserver>
+where
+    F: Fn(Interruption) + Send + Sync + 'static,
+{
+    use std::ptr::NonNull;
+
+    use block2::RcBlock;
+    use objc2_avf_audio::{AVAudioSessionInterruptionType, AVAudioSessionInterruptionTypeKey};
+    use objc2_foundation::{NSNotification, NSNotificationCenter};
+
+    // SAFETY: two weak-linked framework string constants, read exactly as `configure` reads the
+    // category and mode ones. Both are `Option`, so an SDK that does not export them is a `None`
+    // here rather than a crash — the health check then carries this ticket on its own.
+    let (name, type_key) = unsafe {
+        (
+            objc2_avf_audio::AVAudioSessionInterruptionNotification?,
+            AVAudioSessionInterruptionTypeKey?,
+        )
+    };
+
+    let block = RcBlock::new(move |notification: NonNull<NSNotification>| {
+        // SAFETY: the notification is alive for the duration of the block, by contract.
+        let notification = unsafe { notification.as_ref() };
+        let Some(interruption) = interruption_type(notification, type_key) else {
+            // A notification whose userInfo says nothing we understand. Say so once rather than
+            // guessing at `Ended` — the health check covers the case guessing would have.
+            eprintln!("session: interruption notification with no readable type");
+            return;
+        };
+        f(if interruption == AVAudioSessionInterruptionType::Began {
+            Interruption::Began
+        } else {
+            Interruption::Ended
+        });
+    });
+
+    /// Digs `AVAudioSessionInterruptionTypeKey` out of the userInfo dictionary.
+    fn interruption_type(
+        notification: &NSNotification,
+        type_key: &objc2_foundation::NSString,
+    ) -> Option<AVAudioSessionInterruptionType> {
+        use objc2_foundation::NSNumber;
+
+        let user_info = notification.userInfo()?;
+        // The documented value for this key is an `NSNumber`. The downcast is what makes that
+        // checked rather than assumed — a wrong type here would otherwise be a wild read.
+        let value = user_info.objectForKey(type_key.as_ref())?;
+        let number = value.downcast_ref::<NSNumber>()?;
+        Some(AVAudioSessionInterruptionType(
+            number.unsignedIntegerValue(),
+        ))
+    }
+
+    // SAFETY: registering a block-based observer on the default centre. The block is copied by
+    // the runtime, and is `Send + Sync` because the posting thread is not ours to choose.
+    let token = unsafe {
+        NSNotificationCenter::defaultCenter().addObserverForName_object_queue_usingBlock(
+            Some(name),
+            None,
+            None,
+            &block,
+        )
+    };
+    Some(InterruptionObserver { _token: token })
+}
+
+/// No `AVAudioSession` off iOS, so no interruptions to observe. The supervisor loop is left with
+/// the stream-error path alone, which on the macOS dev loop is the honest state of affairs.
+#[cfg(not(target_os = "ios"))]
+pub struct InterruptionObserver;
+
+#[cfg(not(target_os = "ios"))]
+pub fn observe_interruptions<F>(_f: F) -> Option<InterruptionObserver>
+where
+    F: Fn(Interruption) + Send + Sync + 'static,
+{
     None
 }
 

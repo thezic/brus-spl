@@ -250,8 +250,15 @@ fn tick_payload(
 /// a weighting change clear the window without a block from the previous chain landing in it
 /// afterwards (`b04` finding 2).
 fn collect(state: &AppState, now: Instant) -> Tick {
-    // One read serves both the rate cross-check and the input state.
+    // One read serves the rate cross-check, the input state and the health check.
     let capture = state.capture.state();
+
+    // Spec §4.2 item 4: `inputNumberOfChannels == 0` is pollable, and it is polled here because
+    // the tick is the one thing in this app that already runs forever at a known rate. It is
+    // deliberately **independent of** the interruption notification — `11` probe 2 measured a
+    // stream that died permanently with nothing at all reaching Rust — and it costs one property
+    // read per 100 ms, off the audio path. It asks; the capture thread rebuilds.
+    state.capture.check_health(&capture);
 
     let mut metrics = state.metrics.lock().unwrap();
 

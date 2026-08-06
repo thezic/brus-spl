@@ -13,8 +13,8 @@
 //! answer.
 
 use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rtrb::{Consumer, RingBuffer};
@@ -56,8 +56,13 @@ pub struct CaptureFacts {
     pub session: Option<session::SessionFacts>,
 }
 
-/// Capture is either still coming up, running, or dead with a reason. There is no fourth
-/// state at this tier — restarting a dead stream is `b07`'s job.
+/// Capture is either still coming up, running, or dead with a reason.
+///
+/// **`b07` deliberately added no fourth state.** A rebuild is a stream coming up, so it reports
+/// `Starting`; a rebuild that failed is a stream that is dead with a reason, so it reports
+/// `Failed`. Both map to spec §9.4's `unavailable`, which is what the screen should say while
+/// there is no input — and §9.4 has exactly three display states, so a `Recovering` variant would
+/// have been a distinction the reader never sees. The log carries what the states cannot.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum CaptureState {
@@ -131,6 +136,60 @@ impl Chains {
     }
 }
 
+/// How long the supervisor waits before another attempt after a failed rebuild.
+///
+/// Fixed rather than backed off, and never given up on: at a venue the meter is on a stand
+/// across the room, so the only acceptable end state is *running*. Two attempts a second is
+/// nothing next to the audio callback, and the cost of the wrong answer here is the whole talk.
+/// It is also the retry cadence for the doomed attempts made *during* an interruption — see
+/// [`supervise`].
+const RETRY_INTERVAL: Duration = Duration::from_millis(500);
+
+/// The one-slot mailbox the supervisor loop waits on: *a rebuild is wanted, and here is why*.
+///
+/// Three unrelated things post to it — the interruption observer, cpal's error callback, and the
+/// 10 Hz health check — and none of them may block, allocate under a lock, or care whether the
+/// others already fired. **Only the first reason of a run is kept**: the health check re-raises
+/// ten times a second for as long as the session is down, and the reason worth reading is the one
+/// that arrived first, not the hundredth copy of the symptom.
+struct Recovery {
+    wanted: Mutex<Option<String>>,
+    signal: Condvar,
+}
+
+impl Recovery {
+    fn new() -> Recovery {
+        Recovery {
+            wanted: Mutex::new(None),
+            signal: Condvar::new(),
+        }
+    }
+
+    /// Asks for a rebuild. The reason is built **only if the mailbox is empty**, which is what
+    /// keeps the 10 Hz health check from formatting a `String` ten times a second.
+    fn request<F: FnOnce() -> String>(&self, reason: F) {
+        let mut wanted = self.wanted.lock().unwrap();
+        if wanted.is_none() {
+            *wanted = Some(reason());
+            self.signal.notify_one();
+        }
+    }
+
+    /// Blocks until a rebuild is wanted, then takes the reason and empties the mailbox.
+    ///
+    /// Emptied **before** the rebuild rather than after, so a request that arrives while a build
+    /// is in flight survives it and causes another round rather than being swallowed.
+    fn take(&self) -> String {
+        let mut wanted = self.wanted.lock().unwrap();
+        loop {
+            if let Some(reason) = wanted.take() {
+                return reason;
+            }
+            wanted = self.signal.wait(wanted).unwrap();
+        }
+    }
+}
+
 /// The capture side, owned by the app and shared with the audio callback.
 pub struct Capture {
     state: Mutex<CaptureState>,
@@ -146,6 +205,15 @@ pub struct Capture {
     /// The selected weighting, as an index into [`CHAINS`]. Set before the stream exists and
     /// read by the callback once per block.
     weighting: Arc<AtomicU8>,
+    /// Spec §4.2's three recovery triggers, collapsed into one mailbox.
+    recovery: Arc<Recovery>,
+    /// Streams successfully built since startup. **The first is startup; anything above one is a
+    /// recovery**, so this is the only place a rebuild is *observable* rather than merely logged.
+    ///
+    /// A diagnostic in the same sense as [`Capture::dropped`] — it does not cross the bridge and
+    /// nothing on screen is derived from it. It exists because "did it come back on its own" is a
+    /// question with a yes-or-no answer, and reading it off a log is not one.
+    builds: AtomicU64,
 }
 
 impl Capture {
@@ -162,6 +230,8 @@ impl Capture {
             dropped: Arc::new(AtomicU64::new(0)),
             last_error: Arc::new(Mutex::new(None)),
             weighting: Arc::new(AtomicU8::new(chain_index(weighting))),
+            recovery: Arc::new(Recovery::new()),
+            builds: AtomicU64::new(0),
         })
     }
 
@@ -179,26 +249,23 @@ impl Capture {
         let owned = Arc::clone(&capture);
         std::thread::Builder::new()
             .name("capture".into())
-            .spawn(move || {
-                match build(&owned) {
-                    Ok(stream) => {
-                        // `cpal::Stream` is `!Send` and stops on drop, so it has to stay on
-                        // the thread that built it, alive for as long as the app is. Parking
-                        // is where `b07`'s supervisor loop goes.
-                        let _stream = stream;
-                        loop {
-                            std::thread::park();
-                        }
-                    }
-                    Err(reason) => {
-                        eprintln!("capture: {reason}");
-                        *owned.state.lock().unwrap() = CaptureState::Failed { reason };
-                    }
-                }
-            })
+            .spawn(move || supervise(owned))
             .expect("spawn capture thread");
 
         capture
+    }
+
+    /// Spec §4.2 item 4's health check, run on the 10 Hz tick with the state the tick already
+    /// read.
+    ///
+    /// Takes the state rather than re-reading it so the tick's own snapshot is what decides, and
+    /// so the rule itself is [`needs_recovery`] — a pure function, which is the only part of this
+    /// path that can be tested anywhere but on a phone.
+    pub fn check_health(&self, state: &CaptureState) {
+        if needs_recovery(state, session::input_channels()) {
+            self.recovery
+                .request(|| "session reports no input channels".into());
+        }
     }
 
     /// Takes every block summary waiting in the queue, oldest first, and returns how many.
@@ -224,6 +291,12 @@ impl Capture {
     /// Blocks lost to queue overflow since startup. Lost coverage, by construction.
     pub fn dropped(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Streams successfully built since startup. `1` is a session that never lost its stream;
+    /// every value above that is a recovery that happened (spec §4.2).
+    pub fn builds(&self) -> u64 {
+        self.builds.load(Ordering::Relaxed)
     }
 
     /// The most recent stream error, if any. Detail lives in the log; this exists so the
@@ -255,13 +328,162 @@ impl Capture {
     }
 }
 
+/// cpal's error callback: record the error and take the same recovery path as everything else
+/// (spec §4.2 item 5).
+///
+/// **Every** error, without triaging by kind. cpal 0.18.1 documents `DeviceChanged` as *"the
+/// stream remains active and no rebuild is required"*, which is true of the samples and not of
+/// this instrument: a reroute can move the sample rate, and the weighting coefficients and the
+/// published `CaptureFacts` are both derived from the rate read back at build time. Rebuilding is
+/// how they follow the route. The cost of the extra rebuild is a fraction of a second of coverage;
+/// the cost of skipping it is every number afterwards being filtered for the wrong rate.
+///
+/// It is defence rather than the mechanism, though: **neither CoreAudio backend raises
+/// `DeviceChanged` at all** — only WASAPI and PipeWire do — and `11` probe 2 measured an
+/// interruption that reached this callback not once. The health check is what actually catches
+/// things on the phone.
+///
+/// Split out of [`build`] so it can be tested with a synthetic `cpal::Error`, which is the only
+/// one of the three triggers that can be fired anywhere but on a device.
+fn stream_error_callback(
+    last_error: Arc<Mutex<Option<String>>>,
+    recovery: Arc<Recovery>,
+) -> impl FnMut(cpal::Error) + Send + 'static {
+    move |err: cpal::Error| {
+        // Not the audio thread: cpal delivers this on a notification queue, so locking is fine.
+        let kind = err.kind();
+        eprintln!("capture: stream error {kind:?}: {err}");
+        *last_error.lock().unwrap() = Some(format!("{kind:?}: {err}"));
+        recovery.request(|| format!("stream error {kind:?}"));
+    }
+}
+
+/// Spec §4.2 item 4, as a rule rather than as a poll.
+///
+/// **`inputNumberOfChannels == 0` is the whole signal.** `11` probe 2 invoked Siri three seconds
+/// into a run and the stream died permanently: no error reached cpal's error callback, no
+/// all-zero blocks arrived, nothing arrived at all — and this one property went 1 → 0 and stayed
+/// there, meaning the session had been left *deactivated*.
+///
+/// Only a stream that claims to be `Running` is worth checking. `Starting` and `Failed` are
+/// already the supervisor's business, and asking for a rebuild of a rebuild that is in flight
+/// would tear down the stream it had just finished building.
+fn needs_recovery(state: &CaptureState, input_channels: Option<isize>) -> bool {
+    matches!(state, CaptureState::Running(_)) && input_channels.is_some_and(|channels| channels < 1)
+}
+
+/// The capture thread: build the stream, then rebuild it whenever anything says to (spec §4.2).
+///
+/// It owns the `cpal::Stream` for the life of the app because it has to — a stream is `!Send` and
+/// stops on drop, so it cannot be handed anywhere else and cannot be left un-owned. That is also
+/// why *this* loop does the rebuilding rather than whichever thread noticed the problem.
+///
+/// **A failed attempt re-arms rather than ending the thread.** During a Siri call the health check
+/// asks for a rebuild ten times a second and every `setActive(true)` is refused while another
+/// process holds the session, so failure is the *normal* path for the length of the interruption
+/// and recovery is simply the first attempt that succeeds. That also makes a Mac with no input
+/// device, or a permission prompt answered slowly, a retry instead of a permanently dead meter.
+///
+/// Logging is once per run of failures, like the tick's emit failures: two attempts a second for a
+/// 30 s interruption would otherwise be sixty identical lines around the one line that matters.
+fn supervise(capture: Arc<Capture>) {
+    // Registered before the first build, so an interruption during startup is not missed, and
+    // held for the life of the thread — which is the life of the app.
+    let _observer = session::observe_interruptions({
+        let recovery = Arc::clone(&capture.recovery);
+        move |interruption| {
+            // `Began` is not actionable: the session belongs to something else until it ends,
+            // and §6.4's coverage figure is already reporting the hole. Waking the supervisor
+            // here would only spend the interruption failing.
+            if interruption == session::Interruption::Ended {
+                recovery.request(|| "interruption ended".into());
+            }
+        }
+    });
+
+    let mut reported = false;
+    // `Initial` until a build has actually succeeded once, not merely until the first attempt.
+    // The one thing the recovery path skips is the permission prompt, and a first attempt that
+    // failed *before* raising it — `setCategory` refused, say — would otherwise leave an app that
+    // retries forever and never asks for the microphone.
+    let mut activation = session::Activation::Initial;
+    let mut stream = attempt(&capture, activation, &mut reported);
+    if stream.is_some() {
+        activation = session::Activation::Recovery;
+    }
+
+    loop {
+        let reason = capture.recovery.take();
+        // Published before the stream is dropped rather than after, so [`needs_recovery`] stops
+        // seeing a `Running` stream the instant one is no longer wanted. The remaining race — a
+        // health check landing between the condvar wake and this line — costs one redundant
+        // rebuild and a fraction of a second of coverage; closing it properly would mean holding
+        // the state lock across a blocking wait, which is a worse trade.
+        *capture.state.lock().unwrap() = CaptureState::Starting;
+        if !reported {
+            eprintln!("capture: rebuilding — {reason}");
+        }
+        // Dropped **before** the session is touched: a `cpal::Stream` stops on drop, and a
+        // half-live stream over a session being reactivated underneath it is a state nobody has
+        // characterised. Up to 100 ms of undrained blocks go with it, which shows up as lost
+        // coverage — the failure mode this whole design prefers.
+        drop(stream.take());
+        stream = attempt(&capture, activation, &mut reported);
+        if stream.is_some() {
+            activation = session::Activation::Recovery;
+        }
+    }
+}
+
+/// One build attempt: publish what happened, and on failure wait out [`RETRY_INTERVAL`] and ask
+/// for another.
+fn attempt(
+    capture: &Arc<Capture>,
+    activation: session::Activation,
+    reported: &mut bool,
+) -> Option<cpal::Stream> {
+    match build(capture, activation) {
+        Ok(stream) => {
+            *reported = false;
+            // The error that killed the last stream describes a stream that no longer exists.
+            *capture.last_error.lock().unwrap() = None;
+            capture.builds.fetch_add(1, Ordering::Relaxed);
+            Some(stream)
+        }
+        Err(reason) => {
+            if !*reported {
+                eprintln!("capture: {reason}");
+                *reported = true;
+            }
+            *capture.state.lock().unwrap() = CaptureState::Failed {
+                reason: reason.clone(),
+            };
+            std::thread::sleep(RETRY_INTERVAL);
+            capture
+                .recovery
+                .request(|| format!("retrying after {reason}"));
+            None
+        }
+    }
+}
+
 /// Configures the session, builds the stream, and publishes the facts. Runs on the capture
 /// thread; never on the main thread.
-fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
+///
+/// **This is the whole of spec §4.2 item 6.** A rebuild derives the weighting coefficients from
+/// the rate it reads back below, and a fresh [`Chains`] starts from zero state — so recomputing
+/// the coefficients for a new route and zeroing the filter state are not steps in the recovery
+/// path, they are consequences of there being exactly one path that builds a stream. Nothing here
+/// touches [`crate::metrics`], which is the other half of item 6: the ring keeps its slots,
+/// because the same quantity through a differently-designed filter is still valid energy.
+fn build(capture: &Arc<Capture>, activation: session::Activation) -> Result<cpal::Stream, String> {
     // Before cpal is touched. Apple's default `SoloAmbient` category permits no input, and
     // cpal's iOS backend reads the live session at call time — so a stream built first would
-    // be built against the wrong rate even if it built at all.
-    let session = session::configure()?;
+    // be built against the wrong rate even if it built at all. On the recovery path this is
+    // also the `setActive(true)` spec §4.2 item 3 requires, without which the rebuild below
+    // fails with `InvalidInput: channel count must be at least 1` — the same error as a
+    // never-set category, and the reason that trap is written down.
+    let session = session::configure(activation)?;
 
     let host = cpal::default_host();
     let device = host
@@ -331,12 +553,10 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
     }
     let mut chains = Chains::new(config.sample_rate as f64, Arc::clone(&capture.weighting));
 
-    let last_error = Arc::clone(&capture.last_error);
-    let error_callback = move |err: cpal::Error| {
-        // Not the audio thread: cpal delivers this on a notification queue.
-        eprintln!("capture: stream error {:?}: {err}", err.kind());
-        *last_error.lock().unwrap() = Some(format!("{:?}: {err}", err.kind()));
-    };
+    let error_callback = stream_error_callback(
+        Arc::clone(&capture.last_error),
+        Arc::clone(&capture.recovery),
+    );
 
     let stream = device
         .build_input_stream(
@@ -544,5 +764,231 @@ mod tests {
         requested.store(200, Ordering::Relaxed);
         let after = run(&mut chains, 31.5, 3);
         assert_eq!(before, after, "an out-of-range byte changed the weighting");
+    }
+
+    // ── `b07`: interruption and recovery (spec §4.2) ─────────────────────────────────────────
+    //
+    // The three triggers are an iOS notification, an iOS session property and a cpal callback,
+    // and only the last of the three can be fired anywhere but on a phone. What is testable here
+    // is therefore the *rules* — when a rebuild is asked for, and what happens to the request —
+    // and the device pass is what proves a rebuild actually recovers a stream.
+
+    fn running() -> CaptureState {
+        CaptureState::Running(CaptureFacts {
+            device: "test".into(),
+            sample_format: "f32".into(),
+            sample_rate: 48_000,
+            channels: 1,
+            buffer_frames: Some(FRAMES as u32),
+            session: None,
+        })
+    }
+
+    /// Spec §4.2 item 4, which is `11` probe 2's one measured symptom: an interruption took
+    /// `inputNumberOfChannels` **1 → 0 and left it there**, with no stream error, no all-zero
+    /// blocks and nothing else to see.
+    ///
+    /// The two negative rows are the ones with teeth. A rebuild in flight publishes `Starting`,
+    /// and a health check that fired on it would ask the supervisor to tear down the stream it
+    /// had just finished building — the loop feeding itself forever, one rebuild per tick.
+    #[test]
+    fn the_health_check_fires_only_on_a_running_stream_reporting_no_input_channels() {
+        assert!(needs_recovery(&running(), Some(0)));
+        assert!(!needs_recovery(&running(), Some(1)));
+        assert!(!needs_recovery(&running(), Some(2)));
+
+        assert!(!needs_recovery(&CaptureState::Starting, Some(0)));
+        assert!(!needs_recovery(
+            &CaptureState::Failed {
+                reason: "no default input device".into()
+            },
+            Some(0)
+        ));
+
+        // Off iOS there is no session to interrogate, so the check has no opinion at all.
+        assert!(!needs_recovery(&running(), None));
+    }
+
+    /// Spec §9.4's desktop caveat wearing this ticket's costume, asserted rather than noted:
+    /// there is no `AVAudioSession` off iOS, so item 4's health check **cannot fire on the desk**
+    /// and [the Tier 1 device pass](../../../.scratch/spl-meter-build/issues/b08-tier-1-device-pass.md)
+    /// is the only place it is real.
+    #[test]
+    #[cfg(not(target_os = "ios"))]
+    fn off_ios_there_is_no_session_to_poll_so_the_health_check_never_asks() {
+        assert_eq!(session::input_channels(), None);
+
+        let capture = Capture::new(Weighting::C);
+        capture.check_health(&running());
+        assert!(
+            capture.recovery.wanted.lock().unwrap().is_none(),
+            "the desk asked for a rebuild it has no way to know it needs"
+        );
+    }
+
+    /// **Only the first reason of a run survives, and building the later ones never happens.**
+    ///
+    /// The health check asks ten times a second for as long as the session is down, so a mailbox
+    /// that overwrote would replace *interruption ended* with the hundredth copy of the symptom
+    /// it caused — and one that formatted eagerly would allocate a `String` at 10 Hz forever for
+    /// a value it then throws away.
+    #[test]
+    fn a_queued_request_keeps_the_first_reason_and_never_builds_the_others() {
+        let recovery = Recovery::new();
+        recovery.request(|| "interruption ended".into());
+
+        let mut formatted = 0;
+        for _ in 0..100 {
+            recovery.request(|| {
+                formatted += 1;
+                "session reports no input channels".into()
+            });
+        }
+        assert_eq!(formatted, 0, "a queued request formatted its reason anyway");
+
+        assert_eq!(recovery.take(), "interruption ended");
+        assert!(
+            recovery.wanted.lock().unwrap().is_none(),
+            "taking a request left it in the mailbox"
+        );
+    }
+
+    /// The supervisor spends almost all of its life blocked in `take`, so the wake-up is the whole
+    /// mechanism: a trigger that set the flag without waking it would recover on the *next*
+    /// interruption rather than this one, which on a phone is never.
+    #[test]
+    fn a_request_wakes_a_supervisor_that_is_already_waiting() {
+        let recovery = Arc::new(Recovery::new());
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        let waiting = Arc::clone(&recovery);
+        std::thread::spawn(move || {
+            let _ = tx.send(waiting.take());
+        });
+        // Long enough that the thread is inside `wait` rather than about to enter it. The
+        // loop-around-the-wait is what makes the other ordering work too, but this is the
+        // ordering that needs the condvar.
+        std::thread::sleep(Duration::from_millis(50));
+
+        recovery.request(|| "interruption ended".into());
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(5))
+                .expect("the waiting supervisor was never woken"),
+            "interruption ended"
+        );
+    }
+
+    /// Spec §4.2 item 5: **any** stream error takes the recovery path, without triaging by kind.
+    ///
+    /// `DeviceChanged` is the interesting row, because cpal 0.18.1 documents it as *"the stream
+    /// remains active and no rebuild is required"* — true of the samples, false of this
+    /// instrument. The weighting coefficients and the published `CaptureFacts` are both derived
+    /// from the rate read back when the stream was built, so a reroute that cpal handles silently
+    /// still leaves them describing the old route. Rebuilding is how they follow it.
+    #[test]
+    fn any_stream_error_asks_for_a_rebuild_and_records_itself() {
+        for kind in [
+            cpal::ErrorKind::DeviceChanged,
+            cpal::ErrorKind::DeviceNotAvailable,
+            cpal::ErrorKind::InvalidInput,
+        ] {
+            let last_error = Arc::new(Mutex::new(None));
+            let recovery = Arc::new(Recovery::new());
+            let mut on_error =
+                stream_error_callback(Arc::clone(&last_error), Arc::clone(&recovery));
+
+            on_error(cpal::Error::new(kind));
+
+            // The mailbox is read directly rather than through `take`, which blocks: a callback
+            // that recorded the error and asked for nothing would otherwise hang this test rather
+            // than fail it, and a hang is not a result.
+            assert_eq!(
+                recovery.wanted.lock().unwrap().take(),
+                Some(format!("stream error {kind:?}")),
+                "a {kind:?} was recorded but no rebuild was asked for"
+            );
+            let recorded = last_error.lock().unwrap().clone().expect("an error");
+            assert!(recorded.contains(&format!("{kind:?}")), "{recorded}");
+        }
+    }
+
+    /// The supervisor loop against a **real cpal stream**, which is the one half of this ticket the
+    /// desk can genuinely run: a rebuild that replaces a live stream and leaves audio flowing.
+    ///
+    /// It stands in for a signal the desk cannot produce, not for the device pass. What the phone
+    /// adds is whether `setActive(true)` recovers a session iOS deactivated — which is the whole
+    /// question, and is why this is *evidence*, not a substitute.
+    ///
+    /// `#[ignore]`d because it opens the microphone and takes a couple of seconds. `cargo test`
+    /// stays hardware-free and instant, the property `b03` designed the pipeline around; this is
+    /// run deliberately with `cargo test -- --ignored`.
+    #[test]
+    #[ignore = "opens the real microphone; run with `cargo test -- --ignored`"]
+    fn a_requested_rebuild_replaces_a_live_stream_and_audio_keeps_flowing() {
+        /// Polls `f` at 2 ms for up to two seconds — long enough for a CoreAudio stream to come
+        /// up, short enough that a failure is a failure rather than a hang.
+        ///
+        /// The 2 ms is not idle precision: the recovery time printed at the end lands within a few
+        /// ms of spec §6.9's 200 ms staleness threshold, so a 20 ms poll would have been most of
+        /// the distance between *the rebuild is invisible* and *the rebuild shows `--`*.
+        fn within_two_seconds<F: FnMut() -> bool>(mut f: F) -> bool {
+            for _ in 0..1000 {
+                if f() {
+                    return true;
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            false
+        }
+
+        let capture = Capture::start(Weighting::C);
+        assert!(
+            within_two_seconds(|| capture.builds() >= 1),
+            "the first stream never came up"
+        );
+        assert!(matches!(capture.state(), CaptureState::Running(_)));
+
+        // Audio is really arriving, so "flowing again" afterwards means something.
+        let mut before_blocks = 0;
+        assert!(
+            within_two_seconds(|| {
+                before_blocks += capture.drain(|_| {});
+                before_blocks > 0
+            }),
+            "no blocks arrived before the rebuild"
+        );
+
+        // Exactly what the interruption observer, the error callback and the health check all do.
+        // The trigger is stubbed; everything downstream of it is the real thing.
+        let requested_at = Instant::now();
+        capture.recovery.request(|| "forced by the test".into());
+
+        assert!(
+            within_two_seconds(|| capture.builds() >= 2),
+            "the stream was never rebuilt"
+        );
+        assert!(
+            matches!(capture.state(), CaptureState::Running(_)),
+            "a rebuilt stream did not publish `Running`"
+        );
+
+        // The rebuilt stream feeds a **new** queue, so this is the new one being drained.
+        let mut after_blocks = 0;
+        assert!(
+            within_two_seconds(|| {
+                after_blocks += capture.drain(|_| {});
+                after_blocks > 0
+            }),
+            "audio never resumed after the rebuild"
+        );
+
+        // Printed rather than asserted, because it is a measurement of *this* Mac and not a
+        // property of the design — but it is the number that says what a recovery costs, and
+        // whether spec §6.9's 200 ms staleness rule fires during one. Read it when running the
+        // test; the phone's own figure belongs to the device pass.
+        println!(
+            "recovery took {:?} from request to audio flowing again",
+            requested_at.elapsed()
+        );
     }
 }
