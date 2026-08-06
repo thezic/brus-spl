@@ -218,8 +218,14 @@ difference matter (spec §7).
   the callback's real block size, not just to the weighting table. Persistence is one deliberate
   departure from §10's letter — `#[serde(default)]` **per field**, because three settings are a tap to
   restore and the offset is only recoverable beside the reference meter. Eight mutations, all caught;
-  three by a single test each. Not yet run: the swap on a **live** cpal stream, and write-through
-  outside the tests — both wait on `b05`'s commands.
+  three by a single test each. **And quantifying finding 2 turned up finding 7 — the first correction
+  this map has made to the spec rather than to a ticket.** §6.11's table had **no column for the
+  smoother**, and the omission defeated the max-hold clear on its own weighting row: `smoothed` keeps
+  the old weighting's level, so the next block re-latches the hold and a hold never falls. Probed at
+  **7 dB high and permanent** — twenty times finding 2's leak, and unlike it not self-erasing. One
+  line in `on_weighting_change` fixes it, two tests cover it, both fail when it is reverted, and spec
+  §6.11 and §17 now carry the column and the correction. Not yet run: the swap on a **live** cpal
+  stream, and write-through outside the tests — both wait on `b05`'s commands.
 
 ## Not yet specified
 

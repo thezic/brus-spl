@@ -175,6 +175,22 @@ audio thread rather than freeing it in the callback — machinery with nothing t
 there is a weighting *setting*. A rate below 2 kHz is now refused by name rather than panicking
 the capture thread, which is what `WeightingChain::new` would otherwise do.
 
+### Amended by `b04` (2026-08-06)
+
+`Metrics::on_weighting_change` now zeroes the **smoother** as well as the window and the max hold.
+Spec §6.11's table had no column for it, and the omission defeated the max-hold clear this ticket
+implemented faithfully: `smoothed` survived a weighting change holding the old weighting's level, so
+the next block re-latched the hold ~7 dB high and — a hold being historical — kept it for the
+session. `row_weighting_change_clears_the_window_the_max_and_the_smoother` and
+`the_max_hold_does_not_re_latch_the_old_weightings_level_after_a_change` cover it; the spec carries
+the fifth column and the §17 row. Reasoning in
+[`b04`](b04-settings-persistence-and-calibration.md) finding 7.
+
+**Why this ticket's own §6.11 row tests did not catch it:** `row_weighting_change_...` asserted the
+three things the table listed and stopped, because the table listed three things. The mutation pass
+could not have found it either — there was no line of code to break. It took asking what the *next*
+block does after the clear, which is a question about the row below the one being tested.
+
 ### What `b04` and `b05` inherit
 
 - `Metrics::leq_over(seconds)` is public, so spec §8.3's fixed 10 s calibration slice is a call

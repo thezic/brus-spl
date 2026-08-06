@@ -194,13 +194,30 @@ impl Metrics {
         self.max_smoothed = 0.0;
     }
 
-    /// A weighting change (C/A/Z) clears **the window and the max hold** (spec §6.11).
+    /// A weighting change (C/A/Z) clears **the window, the max hold and the smoother**
+    /// (spec §6.11, corrected by `b04`).
     ///
     /// Energy summed through one filter cannot be averaged with energy summed through another.
     /// Zeroing the filter state is the chain's job, in `capture.rs`; the ring's half is here.
+    ///
+    /// **The smoother is the correction, and without it the max-hold clear above is defeated
+    /// within one block.** `smoothed` holds the *old* weighting's level at the moment of the
+    /// change and decays toward the new one over ~1 τ; since the hold only ever rises, the very
+    /// next block re-latches that old value and — a hold being historical — it then stays for the
+    /// rest of the session. Measured at 7 dB high, which is what C→A costs on real room noise.
+    ///
+    /// It is the same argument §6.11 already makes for the window and the hold: `L_Ceq` and
+    /// `L_Aeq` are not comparable, and neither are two smoothed mean squares taken through
+    /// different filters. §6.6's "the smoother state does not reset" is about an **F/S** change —
+    /// the same quantity at a different τ — and does not carry over to a change of quantity.
+    ///
+    /// The cost is NOW reading `--` until the smoother re-converges, which is honest rather than
+    /// merely acceptable: the filter state is zeroed at this same instant, so the first tens of
+    /// milliseconds through the new chain are a startup transient with nothing valid in them.
     pub fn on_weighting_change(&mut self) {
         self.clear_window();
         self.max_smoothed = 0.0;
+        self.smoothed = 0.0;
     }
 
     /// The Reset button: clears the max hold **and** the window (spec §6.8).
@@ -664,7 +681,7 @@ mod tests {
 
     // ── §6.11, every row ─────────────────────────────────────────────────────────────────
     //
-    // The fifth column of the table — the spectrogram's ring — is `b09`'s and empty on every
+    // The last column of the table — the spectrogram's ring — is `b09`'s and empty on every
     // row. The sixth row, a calibration offset change, clears nothing *by construction* here:
     // no offset ever enters this module, so there is no code path for it to clear anything
     // through (spec §8.2, and `b04` owns the assertion that all three numbers shift by exactly
@@ -694,7 +711,7 @@ mod tests {
     }
 
     #[test]
-    fn row_weighting_change_clears_the_window_and_the_max() {
+    fn row_weighting_change_clears_the_window_the_max_and_the_smoother() {
         let mut rig = charged();
         rig.m.on_weighting_change();
 
@@ -702,6 +719,42 @@ mod tests {
         assert_eq!(levels.coverage_s, 0.0);
         assert_eq!(levels.leq, None);
         assert_eq!(levels.max, None);
+        // The smoother goes with them (`b04`'s correction to §6.11). NOW reads `--` rather than
+        // the level of a weighting that is no longer selected.
+        assert_eq!(levels.now, None);
+    }
+
+    /// The regression the row above exists to prevent, stated as the symptom rather than the
+    /// mechanism: **clearing the max hold is worth nothing if the smoother survives to re-latch
+    /// it.** `smoothed` decays over ~1 τ while the hold only rises, so the block after the change
+    /// pins the old weighting's level — and a hold being historical, it never comes back down.
+    ///
+    /// 7 dB apart is what C→A costs on the LF-dominated noise of a real room (`b04` finding 5).
+    #[test]
+    fn the_max_hold_does_not_re_latch_the_old_weightings_level_after_a_change() {
+        const SEVEN_DB: f64 = 5.011_872_336_272_722;
+
+        let mut rig = Rig::new();
+        rig.run(20.0, Some(TONE_MS));
+        let loud = rig.levels().max.expect("a hold");
+
+        rig.m.on_weighting_change();
+        rig.run(20.0, Some(TONE_MS / SEVEN_DB));
+
+        let quiet = rig.levels();
+        let held = quiet.max.expect("a hold");
+        let live = quiet.now.expect("a live level");
+
+        // The hold describes the new weighting, to within the smoother's own convergence.
+        assert!(
+            (held - live).abs() < 0.01,
+            "the hold reads {held} dB while NOW reads {live} dB"
+        );
+        assert!(
+            held < loud - 6.9,
+            "the hold reads {held} dB, only {} dB below the pre-change {loud} dB",
+            loud - held
+        );
     }
 
     #[test]

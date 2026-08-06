@@ -585,16 +585,29 @@ Verbatim from `05`, with `08`'s fourth column. **Several rows read as bugs if un
 they are explained above: an F/S change clears the max but not the window (§6.7), a rate change
 clears neither (§4.2 item 6), and a calibration change clears nothing at all (§8.2).
 
-| | window | max hold | filter state | spectrogram ring |
-|---|---|---|---|---|
-| Reset button | ✓ | ✓ | — | — |
-| Weighting change (C/A/Z) | ✓ | ✓ | zeroed | — |
-| F/S change | — | ✓ | — | — |
-| Window length change | — | — | — | — |
-| Sample-rate change | — | — | zeroed | — |
-| Calibration offset change | — | — | — | — |
+| | window | max hold | smoother (NOW) | filter state | spectrogram ring |
+|---|---|---|---|---|---|
+| Reset button | ✓ | ✓ | — | — | — |
+| Weighting change (C/A/Z) | ✓ | ✓ | **zeroed** | zeroed | — |
+| F/S change | — | ✓ | — | — | — |
+| Window length change | — | — | — | — | — |
+| Sample-rate change | — | — | — | zeroed | — |
+| Calibration offset change | — | — | — | — | — |
 
-**The fourth column is entirely empty, and that is the point** (`08` correction). Nothing
+**The smoother column is `b04`'s correction** and is the *only* column with a single entry. The
+table originally had no column for the smoother at all, and its absence silently defeated the
+max-hold clear on the row above: `smoothed` holds the old weighting's level at the moment of the
+change and decays toward the new one over ~1 τ, while the hold only ever rises — so the next block
+re-latches the old value and, a hold being historical, keeps it for the session. Measured at **7 dB
+high**, which is what C→A costs on real room noise. It is the same argument this section already
+makes for the window and the hold: two smoothed mean squares taken through different filters are no
+more comparable than `L_Ceq` and `L_Aeq`. §6.6's "the smoother state does not reset" is about an
+**F/S** change — the same quantity at a different τ — and does not carry over to a change of
+quantity. The cost is NOW reading `--` until it re-converges, which is honest rather than merely
+acceptable: the filter state is zeroed at the same instant, so the first tens of milliseconds
+through the new chain are a startup transient with nothing valid in them.
+
+**The last column is entirely empty, and that is the point** (`08` correction). Nothing
 clears the spectrogram's column ring: not Reset, not a weighting change (the picture is
 unweighted), not F/S, not a window-length change (a re-slice), not an offset change; and a rate
 change produces gap columns by construction exactly as it does for the energy ring.
@@ -1475,6 +1488,7 @@ list exists so a reader who goes back to a ticket is not misled.
 | `05` d7's *reason* for recommending F-only (not its outcome) | Refuted by measurement: S moves **20× further per tick** than the 10 s L_eq it was compared to, so it is not "nearly the same perceptual slot" (`09` f3). **And S is the default** (`09` d5). |
 | `05` d11's premise that `--` and zero coverage arrive together | **A zero-power block is a gap slot, not a covered one** (`09`) — exact zeros mean `Σn > 0` while the level is undefined. A denied mic reads `0s of 60s`, not `60s of 60s`. |
 | `05`'s reset/clear table | **Gains a fourth column, entirely empty** (`08`) — nothing clears the spectrogram ring. |
+| This spec's own §6.11 table, which had no column for the smoother | **Gains one, with a single entry: a weighting change zeroes it** (`b04`) — without it the same row's max-hold clear is defeated within one block, measured 7 dB high. The first correction the build map has made to this spec rather than to a ticket. |
 | `06` d5's default list `(None, C, F, 60 s)` | **`(None, C, S, 60 s)`** — `09` d5 changed the default time weighting after `06` was written. |
 | `07` d8's "the picture is literally what is inside the number" | Read as **the same span, not the same data** (`08` d5) — Reset does not clear the picture. |
 | `07`'s ~52 px legend gutter | **58 px** (`09` f6) — `dBFS/band` is four characters longer than `dB/band` and overprinted the `now` label. |

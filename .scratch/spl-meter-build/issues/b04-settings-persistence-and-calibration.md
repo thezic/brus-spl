@@ -95,14 +95,17 @@ to `(None, C, S, 60)`; the 0–140 bound rejects `683`.
 
 ## Resolved (2026-08-06)
 
-`src-tauri/src/settings.rs`, plus the live weighting swap `b03` left here. **`cargo test` is 70
-green** (31 new: 23 in `settings.rs`, 5 in `capture.rs`, and 3 that drive the real
-[`Metrics`](b03-the-metrics-pipeline.md) alongside the settings). `cargo clippy --all-targets`,
+`src-tauri/src/settings.rs`, plus the live weighting swap `b03` left here. **`cargo test` is 71
+green** (32 new: 23 in `settings.rs`, 5 in `capture.rs`, 3 that drive the real
+[`Metrics`](b03-the-metrics-pipeline.md) alongside the settings, and 1 for finding 7's correction). `cargo clippy --all-targets`,
 `cargo clippy --target aarch64-apple-ios --lib` and `cargo fmt --check` all clean; `npm run build`
 passes; verified under `npm run tauri dev` on macOS across four restarts.
 
 Every clause of spec §8 and §10 needed no correction. Nothing in §16 is vetoed — **§16.11 met code
-and stands**, the file being `settings.json` in `app_config_dir()` exactly as written.
+and stands**, the file being `settings.json` in `app_config_dir()` exactly as written. **Spec §6.11
+did need one**, found while quantifying finding 2 and written up as finding 7: its table had no
+column for the smoother, and the omission silently defeated the max-hold clear on its own weighting
+row. That is the first correction this build map has made to the spec rather than to a ticket.
 
 ### The module owns the values, not the side effects
 
@@ -164,12 +167,45 @@ the strongest available form of "nothing reset".
    `(None, C, S, 60)` on the real config path. The instrumentation was removed and the app re-run
    clean; `lib.rs` keeps only the startup load, the `AppState` field and the readout fields.
 
+   **Then confirmed on the screen itself**, once screen-recording permission was available: the
+   readout renders `52.8 dB` over `A / F / 120 s / 101.4 dB`, and with the file removed, `−31.5
+   dBFS` over `C / S / 60 s / unset — uncalibrated`. The unit beside the hero number comes from
+   Rust rather than being written into the template, which is what makes §9.2's claim — a value can
+   never be painted under the wrong label — true of the markup and not merely of the payload.
+
 6. **Mutation-tested, eight breakages, all caught.** Offset never applied (**3 tests**), no
    filter-state zeroing on a switch (2), default `F` instead of `S` (2), the reference bound
    widened to 1000 (2), the derived offset clamped to 0–140 (1), a weighting change not written
    through (1), the 10 s slice following the window setting (**3**), and a hand-edited window
    length left unrepaired (1). The three caught by a single test each are thin, and each of those
    tests exists for exactly the property named.
+
+7. **§6.11's table had no column for the smoother, and its absence silently defeated the max-hold
+   clear on its own weighting row.** Found by quantifying finding 2 rather than by reading: the
+   leak turned out to be the smaller half of a real and *permanent* error sitting beside it. On a
+   weighting change §6.11 clears the max hold, but nothing resets `smoothed`, which still holds the
+   **old** weighting's level and decays toward the new one over ~1 τ. Since a hold only ever rises,
+   the block after the change re-latches that old value — and a hold being historical, it then
+   stays for the rest of the session. Probed directly: 20 s at −3.010 dB, a weighting change, then
+   20 s at a level 7 dB lower gave `now = −10.010` beside `max = −3.084`. The clear worked and was
+   undone in one block.
+
+   The spec's own reasoning decides it: §6.11 clears the window and the hold because `L_Ceq` and
+   `L_Aeq` are not comparable, and two smoothed mean squares through different filters are no more
+   comparable than that. §6.6's "the smoother state does not reset" is written about an **F/S**
+   change — the same quantity at a different τ — and does not transfer to a change of quantity.
+
+   Fixed with one line in `Metrics::on_weighting_change`, `self.smoothed = 0.0`. NOW reads `--`
+   until it re-converges, which is honest rather than merely tolerable: the filter state is zeroed
+   at the same instant, so the first tens of milliseconds through the new chain are a startup
+   transient with nothing valid in them. Two tests cover it and **both fail when the line is
+   reverted** — one on the row, one named after the symptom rather than the mechanism, because
+   *clearing the max hold is worth nothing if the smoother survives to re-latch it* is the sentence
+   a future reader needs. Spec §6.11 now carries the fifth column and §17 the correction.
+
+   Worth noting against finding 2: the leak is ≤2.6 dB for one tick and self-erasing, while this
+   was ~7 dB and permanent. The ordering constraint is still worth honouring — it is free — but it
+   was never the dangerous half.
 
 ### What was verified where, and the one thing that was not
 
@@ -206,11 +242,13 @@ running, because the command that would is `b05`'s.
 
 | command | result |
 |---|---|
-| `cargo test` | **70 passed, 0 failed** (31 new, 39 `b02`+`b03`'s) |
+| `cargo test` | **71 passed, 0 failed** (32 new, 39 `b02`+`b03`'s) |
 | `cargo clippy --all-targets` | clean, no warnings |
 | `cargo clippy --target aarch64-apple-ios --lib` | clean, no warnings |
 | `cargo check --target aarch64-apple-ios --lib` | clean |
 | `cargo fmt --check` | clean |
 | `npm run build` | pass (`vue-tsc --noEmit` + `vite build`) |
-| `npm run tauri dev` on macOS, 4 restarts | defaults, persisted `(A, F, 120, +101.4)`, corrupt fallback, clean re-run; finding 5 |
+| `npm run tauri dev` on macOS, 6 restarts | defaults, persisted `(A, F, 120, +101.4)`, corrupt fallback, clean re-run; finding 5 |
+| both states read off the screen | `52.8 dB` calibrated, `−31.5 dBFS` uncalibrated; finding 5 |
 | mutation pass, 8 breakages | all caught; finding 6 |
+| §6.11 smoother fix, reverted to check | both new tests fail; finding 7 |
