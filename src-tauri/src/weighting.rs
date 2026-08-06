@@ -23,6 +23,8 @@
 
 use std::f64::consts::TAU;
 
+use serde::{Deserialize, Serialize};
+
 /// f₁ — double pole, shared by A and C (clauses 5.4.9–5.4.11).
 const F1_HZ: f64 = 20.598_997_057_568_143;
 /// f₂ — single pole, A only.
@@ -36,7 +38,11 @@ const F4_HZ: f64 = 12_194.217_147_998_01;
 const REFERENCE_HZ: f64 = 1000.0;
 
 /// The three weighting modes (spec §5). Z is the bypass path, not a filter.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The variant names *are* the wire and file representation — `"A"`, `"C"`, `"Z"` — so no
+/// `rename` is needed and spec §9.2's "a Rust field name and its TS field name are literally
+/// the same string" extends to the values (`b04`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Weighting {
     A,
     C,

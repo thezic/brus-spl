@@ -12,7 +12,7 @@
 //! plausible, wrong level. Overflow degrades into a smaller honest sample, never a wrong
 //! answer.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -21,7 +21,7 @@ use rtrb::{Consumer, RingBuffer};
 use serde::Serialize;
 
 use crate::session;
-use crate::weighting;
+use crate::weighting::{Weighting, WeightingChain};
 
 /// One audio block, reduced to the only three things the metrics ring needs.
 ///
@@ -66,6 +66,71 @@ pub enum CaptureState {
     Failed { reason: String },
 }
 
+/// The cascade order the weighting selection is encoded in. Index, not identity, so the
+/// selection can cross into the audio callback as one relaxed byte.
+const CHAINS: [Weighting; 3] = [Weighting::A, Weighting::C, Weighting::Z];
+
+fn chain_index(weighting: Weighting) -> u8 {
+    match weighting {
+        Weighting::A => 0,
+        Weighting::C => 1,
+        Weighting::Z => 2,
+    }
+}
+
+/// All three chains, pre-built, with the live selection arriving as one atomic byte.
+///
+/// **The weighting setting has to reach a running audio callback, and the callback may not
+/// allocate, lock or free** (spec §3.3). Deriving a chain on demand allocates a `Vec<Biquad>`;
+/// receiving one from the settings side means freeing the outgoing one somewhere, and the
+/// callback is not allowed to be that somewhere. Building all three up front costs three
+/// `Vec`s of at most three biquads — a few hundred bytes, once per stream — and reduces the
+/// whole problem to an index.
+///
+/// [`Chains::sync`] runs **once per block**, not per sample, and is where spec §6.11's third
+/// column happens: the chain being switched *to* holds whatever state it held when it was last
+/// live, so it is zeroed on the way in.
+struct Chains {
+    chains: [WeightingChain; 3],
+    active: usize,
+    /// Written by the command thread, read by the audio thread. `Relaxed` is sufficient: the
+    /// byte is the only thing communicated, there is nothing it orders, and a switch one block
+    /// late is 21 ms of the previous weighting — already inside the ±21 ms with which spec §6.3
+    /// places a block in the ring.
+    requested: Arc<AtomicU8>,
+}
+
+impl Chains {
+    fn new(sample_rate: f64, requested: Arc<AtomicU8>) -> Chains {
+        let active = requested.load(Ordering::Relaxed) as usize;
+        Chains {
+            chains: CHAINS.map(|weighting| WeightingChain::new(sample_rate, weighting)),
+            active: active.min(CHAINS.len() - 1),
+            requested,
+        }
+    }
+
+    /// Picks up a weighting change, zeroing the incoming chain's state (spec §6.11).
+    #[inline]
+    fn sync(&mut self) {
+        let requested = self.requested.load(Ordering::Relaxed) as usize;
+        if requested == self.active || requested >= self.chains.len() {
+            return;
+        }
+        // Zeroing is not hygiene. This chain last ran however long ago the mode was last
+        // selected, so its state describes sound that is no longer in the room; left alone it
+        // rings the old state out through a filter whose slowest pole sits at 20.6 Hz. Writing
+        // zeros over `Vec<Biquad>` state allocates nothing, which is why it is allowed here.
+        self.chains[requested].reset();
+        self.active = requested;
+    }
+
+    #[inline]
+    fn process(&mut self, sample: f64) -> f64 {
+        self.chains[self.active].process(sample)
+    }
+}
+
 /// The capture side, owned by the app and shared with the audio callback.
 pub struct Capture {
     state: Mutex<CaptureState>,
@@ -78,6 +143,9 @@ pub struct Capture {
     /// Errors delivered to cpal's error callback, which runs on a notification queue rather
     /// than the audio thread — so locking here is fine.
     last_error: Arc<Mutex<Option<String>>>,
+    /// The selected weighting, as an index into [`CHAINS`]. Set before the stream exists and
+    /// read by the callback once per block.
+    weighting: Arc<AtomicU8>,
 }
 
 impl Capture {
@@ -87,12 +155,16 @@ impl Capture {
     /// completion block is delivered on the main queue, so doing any of this inline in Tauri's
     /// `setup` — which runs on the main thread — would deadlock the app before it drew a
     /// frame.
-    pub fn start() -> Arc<Capture> {
+    ///
+    /// `weighting` is the **persisted** setting, passed in rather than defaulted so the first
+    /// block of the session is already filtered the way the reader left it (`b04`).
+    pub fn start(weighting: Weighting) -> Arc<Capture> {
         let capture = Arc::new(Capture {
             state: Mutex::new(CaptureState::Starting),
             consumer: Mutex::new(None),
             dropped: Arc::new(AtomicU64::new(0)),
             last_error: Arc::new(Mutex::new(None)),
+            weighting: Arc::new(AtomicU8::new(chain_index(weighting))),
         });
 
         let owned = Arc::clone(&capture);
@@ -150,6 +222,27 @@ impl Capture {
     /// conflates causes on purpose).
     pub fn last_error(&self) -> Option<String> {
         self.last_error.lock().unwrap().clone()
+    }
+
+    /// Switches the weighting on a **running** stream, zeroing the incoming chain's filter state
+    /// (spec §6.11's second row, third column).
+    ///
+    /// The callback picks this up at its next block boundary, so up to one block — 21 ms at
+    /// 48 kHz — is still weighted the old way after this returns. The caller must therefore
+    /// **drain the queue before clearing the window**, or that block lands in the newly cleared
+    /// window carrying energy summed through the previous filter. Order at the command site:
+    /// this call, then [`Capture::drain`] discarding what comes out, then
+    /// [`crate::metrics::Metrics::on_weighting_change`].
+    pub fn set_weighting(&self, weighting: Weighting) {
+        self.weighting
+            .store(chain_index(weighting), Ordering::Relaxed);
+    }
+
+    /// The selected weighting. This is the callback's view, which lags a
+    /// [`Capture::set_weighting`] by at most one block; the authoritative setting is the one in
+    /// [`crate::settings`].
+    pub fn weighting(&self) -> Weighting {
+        CHAINS[(self.weighting.load(Ordering::Relaxed) as usize).min(CHAINS.len() - 1)]
     }
 }
 
@@ -214,10 +307,10 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
     let stride = config.channels.max(1) as usize;
     let dropped = Arc::clone(&capture.dropped);
 
-    // The weighting chain lives in the callback and is derived here, from the **granted** rate
-    // — this is the only place that rate is known, and every coefficient depends on it. `C` is
-    // the default (spec §11.4); the setting that changes it, and the filter-state zeroing spec
-    // §6.11 requires when it does, belong to `b04`.
+    // The weighting chains live in the callback and are derived here, from the **granted** rate
+    // — this is the only place that rate is known, and every coefficient depends on it. All
+    // three are built because the setting can change on a running stream and the callback may
+    // not allocate; see [`Chains`].
     //
     // `WeightingChain::new` panics below 2 kHz, which on the capture thread would take the app
     // down silently, so the refusal is explicit and names the rate.
@@ -227,8 +320,7 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
             config.sample_rate
         ));
     }
-    let mut chain =
-        weighting::WeightingChain::new(config.sample_rate as f64, weighting::Weighting::C);
+    let mut chains = Chains::new(config.sample_rate as f64, Arc::clone(&capture.weighting));
 
     let last_error = Arc::clone(&capture.last_error);
     let error_callback = move |err: cpal::Error| {
@@ -245,6 +337,11 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
                 let mut sum_sq = 0.0f64;
                 let mut n: u32 = 0;
 
+                // One relaxed load per block, outside the sample loop. A weighting change is
+                // picked up here and nowhere else, so a block is never half one weighting and
+                // half another.
+                chains.sync();
+
                 for frame in data.chunks_exact(stride) {
                     // f32 → f64 at the block boundary, and all DSP in f64 from here on: `03`
                     // measured f32 filter state degrading the level by +1.7 dB with a DC
@@ -252,11 +349,11 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
                     // microphone in a venue delivers.
                     let x = frame[0] as f64;
 
-                    // ─── the weighting seam, closed by `b03` ───────────────────────────
+                    // ─── the weighting seam, closed by `b03`, switchable by `b04` ──────
                     // No DC blocker here or anywhere: the A and C filters are themselves
                     // high-passes, f64 removes the precision motive, and the FFT tap wants
                     // the DC (spec §3.3).
-                    let y = chain.process(x);
+                    let y = chains.process(x);
                     // ───────────────────────────────────────────────────────────────────
 
                     sum_sq += y * y;
@@ -287,4 +384,156 @@ fn build(capture: &Arc<Capture>) -> Result<cpal::Stream, String> {
     *capture.state.lock().unwrap() = CaptureState::Running(facts);
 
     Ok(stream)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const FS: f64 = 48_000.0;
+    /// The block the granted route actually delivers (`b01` finding 3), so `sync` is exercised
+    /// at the rate the callback really calls it.
+    const FRAMES: usize = 1024;
+
+    /// A tone at a frequency where the three weightings are far apart: C reads −3.0 dB at
+    /// 31.5 Hz, A reads −39.4 dB, Z reads 0. Nothing here can pass by accident.
+    fn tone(hz: f64, samples: usize, phase: usize) -> Vec<f64> {
+        (0..samples)
+            .map(|i| (std::f64::consts::TAU * hz * (i + phase) as f64 / FS).sin())
+            .collect()
+    }
+
+    /// Runs `blocks` blocks of `hz` through `chains`, calling `sync` once per block exactly as
+    /// the audio callback does, and returns Σp² over the whole run.
+    ///
+    /// Deliberately **not** per block: `b02` finding 4 measured `sin²` averaged over a partial
+    /// cycle biased by up to 1 dB at these frequencies, and 1024 samples of 31.5 Hz is two thirds
+    /// of a cycle. Summing over the whole run puts the bias under 0.04 dB without pretending the
+    /// callback's block size is anything other than 1024.
+    fn run(chains: &mut Chains, hz: f64, blocks: usize) -> f64 {
+        let mut sum_sq = 0.0;
+        for block in 0..blocks {
+            chains.sync();
+            for x in tone(hz, FRAMES, block * FRAMES) {
+                let y = chains.process(x);
+                sum_sq += y * y;
+            }
+        }
+        sum_sq
+    }
+
+    /// The mean-square level of a run, in dB re FS.
+    fn db(sum_sq: f64, blocks: usize) -> f64 {
+        10.0 * (sum_sq / (blocks * FRAMES) as f64).log10()
+    }
+
+    fn chains_at(weighting: Weighting) -> (Chains, Arc<AtomicU8>) {
+        let requested = Arc::new(AtomicU8::new(chain_index(weighting)));
+        (Chains::new(FS, Arc::clone(&requested)), requested)
+    }
+
+    #[test]
+    fn the_selection_starts_where_the_persisted_setting_says() {
+        for weighting in CHAINS {
+            let (chains, _) = chains_at(weighting);
+            assert_eq!(CHAINS[chains.active], weighting);
+        }
+    }
+
+    /// 31.5 Hz, where the standard's own table puts the three modes 0 / −3.0 / −39.4 dB apart.
+    /// Asserted as **differences from Z**, not as absolute levels: the absolute accuracy of the
+    /// filters is `b02`'s 21 tests, and what this ticket adds is only that a switch reaches the
+    /// running callback and selects the right chain.
+    #[test]
+    fn switching_weighting_on_a_running_stream_changes_the_level() {
+        const BLOCKS: usize = 40;
+        let (mut chains, requested) = chains_at(Weighting::Z);
+        let z = db(run(&mut chains, 31.5, BLOCKS), BLOCKS);
+
+        // Exactly what `Capture::set_weighting` does, from another thread's point of view.
+        requested.store(chain_index(Weighting::A), Ordering::Relaxed);
+        let a = db(run(&mut chains, 31.5, BLOCKS), BLOCKS);
+        assert!(
+            (z - a - 39.4).abs() < 0.2,
+            "A sat {} dB below Z at 31.5 Hz, expected 39.4",
+            z - a
+        );
+
+        requested.store(chain_index(Weighting::C), Ordering::Relaxed);
+        let c = db(run(&mut chains, 31.5, BLOCKS), BLOCKS);
+        assert!(
+            (z - c - 3.0).abs() < 0.1,
+            "C sat {} dB below Z at 31.5 Hz, expected 3.0",
+            z - c
+        );
+    }
+
+    /// Spec §6.11's third column. A chain that was live minutes ago holds state describing sound
+    /// no longer in the room, and its slowest pole is at 20.6 Hz — left alone it rings that state
+    /// out into the freshly cleared window. The assertion is exact: switching back must give
+    /// **bit-identical** output to a chain that has never run.
+    #[test]
+    fn switching_zeroes_the_filter_state_of_the_chain_being_switched_to() {
+        let (mut chains, requested) = chains_at(Weighting::C);
+        // Warm C on something with plenty of low-frequency energy to store.
+        run(&mut chains, 31.5, 20);
+
+        // Away and back, which is the case a `reset` on the *outgoing* chain would miss.
+        requested.store(chain_index(Weighting::A), Ordering::Relaxed);
+        run(&mut chains, 400.0, 5);
+        requested.store(chain_index(Weighting::C), Ordering::Relaxed);
+        let reused = run(&mut chains, 31.5, 3);
+
+        let (mut cold, _) = chains_at(Weighting::C);
+        let fresh = run(&mut cold, 31.5, 3);
+
+        assert_eq!(
+            reused, fresh,
+            "a re-selected chain did not start from zero state"
+        );
+    }
+
+    /// The two halves of the same property, stated at zero tolerance because silence has no
+    /// windowing bias: **a chain fed silence must be silent, and a chain left warm is not.**
+    ///
+    /// The second assertion is what gives the first one teeth — without it, `reset` could be a
+    /// no-op and the test would still pass.
+    #[test]
+    fn a_re_selected_chain_is_silent_when_the_audio_stops_and_a_warm_one_rings() {
+        let silence = vec![0.0f64; FRAMES];
+
+        let (mut chains, requested) = chains_at(Weighting::C);
+        run(&mut chains, 31.5, 20);
+        requested.store(chain_index(Weighting::A), Ordering::Relaxed);
+        run(&mut chains, 400.0, 5);
+        requested.store(chain_index(Weighting::C), Ordering::Relaxed);
+        chains.sync();
+        let after_switch: f64 = silence.iter().map(|&x| chains.process(x).powi(2)).sum();
+        assert_eq!(
+            after_switch, 0.0,
+            "a re-selected chain rang out state from the last time it was live"
+        );
+
+        let (mut warm, _) = chains_at(Weighting::C);
+        run(&mut warm, 31.5, 20);
+        let ringing: f64 = silence.iter().map(|&x| warm.process(x).powi(2)).sum();
+        assert!(
+            ringing > 0.0,
+            "nothing to zero away: a warm C chain fed silence produced silence"
+        );
+    }
+
+    /// A byte outside the three modes can only come from a bug on the writing side, and the
+    /// callback is the one place a panic is unrecoverable — it takes the audio thread with it.
+    #[test]
+    fn a_selection_byte_that_names_no_mode_is_ignored_rather_than_panicking() {
+        let requested = Arc::new(AtomicU8::new(9));
+        let mut chains = Chains::new(FS, Arc::clone(&requested));
+        assert!(chains.active < CHAINS.len());
+        let before = run(&mut chains, 31.5, 3);
+
+        requested.store(200, Ordering::Relaxed);
+        let after = run(&mut chains, 31.5, 3);
+        assert_eq!(before, after, "an out-of-range byte changed the weighting");
+    }
 }

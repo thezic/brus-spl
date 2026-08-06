@@ -197,6 +197,30 @@ difference matter (spec §7).
   derived from the granted rate. Swapping the chain live, and §6.11's filter-state zeroing, are left
   to `b04`, which owns the setting that drives them.
 
+- [Settings, persistence and calibration arithmetic](issues/b04-settings-persistence-and-calibration.md)
+  — **Built and green: 70 tests overall, and the calibration verified on live audio at both ends —
+  raw under `dBFS`, then exactly `raw + 101.4` under `dB`.** Spec §8 and §10 needed no correction, and
+  **§16.11 met code and stands.** The module owns the values and deliberately **not** the side effects:
+  clearing the window and the max hold stays in `metrics.rs`, zeroing the filter state stays in the
+  callback, so a weighting change is three calls at the command site rather than one. That is what keeps
+  §6.11's table testable — and its bottom row, *a calibration change clears nothing*, now has the test
+  that makes the claim checkable rather than merely stated: the **raw** `Levels` are bit-identical
+  across two offset changes. The inherited live chain swap is done by **pre-building all three chains**
+  and passing the selection in as one relaxed `AtomicU8`, which is what makes it allocation-free — and
+  the consequence is finding 1: **the chain to zero is the one being switched *to***, since a chain
+  retains state from whenever it was last live. Resetting the outgoing one reads equally plausible and
+  is wrong on the second switch. Finding 2 is an ordering constraint `b05` must honour: the callback
+  switches at its next block boundary while the window is cleared on another thread, so **~21 ms of
+  old-weighted energy leaks into the fresh window** unless the queue is drained and discarded in
+  between — invisible on screen, which is why it is written on `set_weighting`'s doc comment. **`b02`'s
+  finding 4 bit again, in this ticket's own tests**: 1024 samples of 31.5 Hz is two thirds of a cycle
+  and biased a per-block level by 0.58 dB, so the trap belongs to any test measuring a low tone over
+  the callback's real block size, not just to the weighting table. Persistence is one deliberate
+  departure from §10's letter — `#[serde(default)]` **per field**, because three settings are a tap to
+  restore and the offset is only recoverable beside the reference meter. Eight mutations, all caught;
+  three by a single test each. Not yet run: the swap on a **live** cpal stream, and write-through
+  outside the tests — both wait on `b05`'s commands.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
@@ -230,10 +254,10 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   and eight smaller calls were made by the spec rather than by any ticket, and listed there
   expressly so they could be vetoed in review rather than discovered in code. A ticket that
   finds one of them wrong should say so in its resolution rather than working around it.
-  **Nothing is vetoed so far.** §16.2, §16.4, §16.7 and §16.9 have met code and all four stand —
-  though `b03` found §16.7's *rationale* unreliable while its rule holds, which is the one case
-  where reading the justification rather than the clause would have produced wrong behaviour.
-  §16.1, §16.3, §16.5, §16.6, §16.8, §16.10 and §16.11 are still untouched.
+  **Nothing is vetoed so far.** §16.2, §16.4, §16.7, §16.9 and §16.11 have met code and all five
+  stand — though `b03` found §16.7's *rationale* unreliable while its rule holds, which is the one
+  case where reading the justification rather than the clause would have produced wrong behaviour.
+  §16.1, §16.3, §16.5, §16.6, §16.8 and §16.10 are still untouched.
 
 ## Out of scope
 

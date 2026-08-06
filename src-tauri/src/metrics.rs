@@ -19,6 +19,8 @@
 
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
+
 use crate::capture::BlockSummary;
 
 /// One slot is 100 ms (spec §6.3).
@@ -48,10 +50,15 @@ pub const WINDOW_LENGTHS_S: [u32; 4] = [10, 30, 60, 120];
 /// Measured rather than argued: with the live value as the hero number, at `F` it moves 1.72 dB
 /// per 100 ms tick — further than any rounding step, so display resolution cannot calm it. At
 /// `S` it moves 0.351 dB per tick and still covers 6.8 dB of range.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+///
+/// The wire and file representation is `"F"` / `"S"` (spec §9.1), which is why these two
+/// variants carry a `rename` where [`crate::weighting::Weighting`]'s do not (`b04`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum TimeWeighting {
+    #[serde(rename = "F")]
     Fast,
     #[default]
+    #[serde(rename = "S")]
     Slow,
 }
 

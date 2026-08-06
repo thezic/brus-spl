@@ -33,11 +33,23 @@ type CaptureState =
   | ({ state: "running" } & CaptureFacts)
   | { state: "failed"; reason: string };
 
+// snake_case, unlike the rest of this file: these are the four settings in the shape spec §9.1
+// puts them on the wire, and `b04` deliberately made the Rust field names and these the same
+// strings. `b05`'s `src/bridge.ts` owns this type for real.
+interface Settings {
+  weighting: "C" | "A" | "Z";
+  time_weighting: "F" | "S";
+  window_s: number;
+  offset_db: number | null;
+}
+
 interface Readout {
   capture: CaptureState;
   blocks: number;
   dropped: number;
-  dbfs: number | null;
+  level: number | null;
+  unit: "dB" | "dBFS";
+  settings: Settings;
   lastError: string | null;
 }
 
@@ -69,13 +81,17 @@ onUnmounted(() => {
 
 <template>
   <main>
-    <p class="tag">b01 — temporary capture readout</p>
+    <p class="tag">b01/b04 — temporary capture readout</p>
 
     <!-- `--` rather than a number whenever the level is undefined: exact-zero blocks from a
-         denied microphone must not render as a very quiet room (spec §6.9). -->
+         denied microphone must not render as a very quiet room (spec §6.9).
+
+         The unit comes from Rust beside the value rather than being written here, which is spec
+         §9.2's footgun-denial extended from values to labels: `dBFS` while uncalibrated is a
+         correctly-named different quantity, not a wrong SPL (spec §8.6). -->
     <p class="hero">
-      {{ readout?.dbfs != null ? readout.dbfs.toFixed(1) : "--" }}
-      <span class="unit">dBFS</span>
+      {{ readout?.level != null ? readout.level.toFixed(1) : "--" }}
+      <span class="unit">{{ readout?.unit ?? "dBFS" }}</span>
     </p>
 
     <template v-if="readout">
@@ -89,6 +105,23 @@ onUnmounted(() => {
         <dd>{{ readout.blocks }}</dd>
         <dt>dropped</dt>
         <dd>{{ readout.dropped }}</dd>
+
+        <!-- The persisted settings, straight from Rust. No command changes them yet — that is
+             b05 — so this is here to show what `settings.json` was loaded as. -->
+        <dt>weighting</dt>
+        <dd>{{ readout.settings.weighting }}</dd>
+        <dt>time wt</dt>
+        <dd>{{ readout.settings.time_weighting }}</dd>
+        <dt>window</dt>
+        <dd>{{ readout.settings.window_s }} s</dd>
+        <dt>offset</dt>
+        <dd>
+          {{
+            readout.settings.offset_db != null
+              ? `${readout.settings.offset_db.toFixed(1)} dB`
+              : "unset — uncalibrated"
+          }}
+        </dd>
 
         <template v-if="readout.capture.state === 'running'">
           <dt>rate</dt>
