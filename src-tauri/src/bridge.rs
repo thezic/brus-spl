@@ -1,4 +1,4 @@
-//! The wire contract, the 10 Hz tick thread and the six commands — spec §9.
+//! The wire contract, the 10 Hz tick thread and the seven commands — spec §9.
 //!
 //! **One event carrying everything the screen paints, plus commands. The frontend holds no
 //! authoritative state at all** (spec §9). The tick is ≈460 bytes, ≈4.6 kB/s — about **17×
@@ -28,10 +28,10 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::capture::{Capture, CaptureState};
-use crate::metrics::{Levels, Metrics, TimeWeighting};
+use crate::metrics::{Levels, Metrics, TimeWeighting, SLOT_MS};
 use crate::session::{self, MicPermission};
 use crate::settings::{Settings, SettingsStore, Unit};
-use crate::spectrum::Spectrum;
+use crate::spectrum::{Spectrum, BANDS};
 use crate::weighting::Weighting;
 
 /// The event name the frontend listens for. **Events need no capability entry** — `core:default`
@@ -85,19 +85,32 @@ pub struct Meter {
 
 /// One spectrogram column, spec §9.1's `columns` element.
 ///
-/// **Shipped from the start, always empty until
-/// [`b09`](../../../.scratch/spl-meter-build/issues/b09-spectrum-analysis-and-the-column-ring.md)**,
-/// so the type does not change under the frontend later.
-///
 /// Every column carries its **absolute** slot index, and each tick ships every real column since
 /// the previous publish. That is required for correctness, not robustness: spec §6.2's
 /// clock-advanced ring means a late tick — a timer on a phone — has two or three genuinely
 /// completed slots behind it, and a one-column payload would drop real data on the floor. It is
-/// why `columns` is an array even while it is empty.
+/// why `columns` is an array, and why it was one from `b05` onwards even while it was always
+/// empty.
+///
+/// **Gaps are absent rather than marked** (spec §9.2): a slot index in `(last_drawn, now_slot]`
+/// with no column *is* spec §7.3's hole. Explicit `bands: null` entries were rejected as
+/// duplicating what the indices already say, at 270 wasted entries for a 27 s hole.
+///
+/// The band values are **raw dB re FS shifted by nothing** — the one exception to this module's
+/// *everything crossing here is calibrated* rule, and it is spec §7.1's arithmetic rather than an
+/// oversight: the colour window shifts *by the offset* and the values shift with it, so every
+/// colour is unchanged and only the legend relabels. Calibrating is the one settings act that
+/// changes every number on screen and no pixel of the picture (spec §9.5).
 #[derive(Debug, Clone, Copy, PartialEq, Serialize)]
 pub struct Column {
     pub slot: u64,
-    pub bands: [f32; 32],
+    pub bands: [f32; BANDS],
+}
+
+impl From<(u64, [f32; BANDS])> for Column {
+    fn from((slot, bands): (u64, [f32; BANDS])) -> Column {
+        Column { slot, bands }
+    }
 }
 
 /// The four settings **and the unit**, as spec §9.1 puts them on the wire.
@@ -167,9 +180,9 @@ pub struct AppState {
     /// arrives on Tauri's command thread.
     pub metrics: Mutex<Metrics>,
     /// The FFT frame buffer and the column ring. Behind a `Mutex` for one reason only —
-    /// `b10`'s `get_spectrogram` arrives on Tauri's command thread and reads the same history
-    /// the tick is writing. **No command mutates it**: spec §6.11's fourth column is empty, so
-    /// nothing the reader can press clears, re-slices or otherwise disturbs the picture.
+    /// [`get_spectrogram`] arrives on Tauri's command thread and reads the same history the tick
+    /// is writing. **No command mutates it**: spec §6.11's fourth column is empty, so nothing the
+    /// reader can press clears, re-slices or otherwise disturbs the picture.
     pub spectrum: Mutex<Spectrum>,
     /// The four settings and their file. A write goes to disk (spec §10) — not something to do
     /// from an audio path, and this is not one.
@@ -177,6 +190,12 @@ pub struct AppState {
     /// Blocks deposited since startup. A diagnostic, counting what the *display* side has seen,
     /// which is the number worth watching on a device.
     pub blocks: AtomicU64,
+    /// The first slot whose column has **not** been shipped in a tick yet — see
+    /// [`unsent_columns`], which is the only thing that reads or writes it.
+    ///
+    /// Atomic rather than a plain field because it is written through the `&AppState` a Tauri
+    /// command site hands out. Only the tick thread touches it, so the ordering is `Relaxed`.
+    unsent_from: AtomicU64,
 }
 
 impl AppState {
@@ -190,6 +209,7 @@ impl AppState {
             metrics: Mutex::new(metrics),
             settings: Mutex::new(settings),
             blocks: AtomicU64::new(0),
+            unsent_from: AtomicU64::new(0),
         }
     }
 }
@@ -227,6 +247,36 @@ fn input_state(permission: Option<MicPermission>, capture: &CaptureState) -> Inp
     }
 }
 
+/// Every real column the frontend has not been sent yet, and it advances the cursor past them.
+///
+/// **The range is `(last shipped, now_slot]`, not "the slots this tick happened to file".** The
+/// two differ, and `b09`'s own resolution is why: a tick that completes **zero** hops files
+/// nothing, and the *next* tick fills that slot retroactively as `now_slot − 1`. A cursor parked
+/// at `now_slot + 1` would step over it, and the column would exist in the ring — so
+/// [`get_spectrogram`] would return it — while never reaching the wire. The picture would then
+/// disagree with itself across a reload, one slot at a time, which is the shape of bug nobody
+/// reports and nobody finds.
+///
+/// It is also the same range expression spec §9.2 gives the *frontend* for deciding what is a
+/// hole, which is not a coincidence worth losing: what Rust ships from and what the canvas draws
+/// into are one interval.
+///
+/// The cursor moves only when something is actually shipped, so a genuine silence widens the
+/// scanned range until [`Spectrum::columns_in`] clamps it to the ring — at most 1200 index
+/// comparisons per tick, and it re-converges on the first column that arrives.
+fn unsent_columns(state: &AppState, spectrum: &Spectrum, now_slot: u64) -> Vec<Column> {
+    let first = state.unsent_from.load(Ordering::Relaxed);
+    let columns: Vec<Column> = spectrum
+        .columns_in(first, now_slot)
+        .into_iter()
+        .map(Column::from)
+        .collect();
+    if let Some(last) = columns.last() {
+        state.unsent_from.store(last.slot + 1, Ordering::Relaxed);
+    }
+    columns
+}
+
 /// Assembles one tick from already-gathered inputs.
 ///
 /// Split from [`collect`] so the wire shape can be tested without an app, a stream or a clock.
@@ -236,6 +286,7 @@ fn tick_payload(
     cal: (Option<f64>, f64),
     settings: Settings,
     input: Input,
+    columns: Vec<Column>,
 ) -> Tick {
     let (cal_leq, cal_coverage_s) = cal;
     Tick {
@@ -250,7 +301,7 @@ fn tick_payload(
             input,
         },
         settings: settings.into(),
-        columns: Vec::new(),
+        columns,
     }
 }
 
@@ -313,6 +364,9 @@ fn collect(state: &AppState, now: Instant) -> Tick {
     );
     state.capture.drain_samples(|chunk| spectrum.ingest(chunk));
     spectrum.publish(now_slot);
+    // Read back under the same lock the filing happened under, so nothing can slip between the
+    // two and be shipped twice or not at all.
+    let columns = unsent_columns(state, &spectrum, now_slot);
     drop(spectrum);
 
     let settings = state.settings.lock().unwrap().settings();
@@ -323,6 +377,7 @@ fn collect(state: &AppState, now: Instant) -> Tick {
         cal,
         settings,
         input_state(session::permission(), &capture),
+        columns,
     )
 }
 
@@ -371,14 +426,15 @@ fn tick_loop(app: AppHandle) {
     }
 }
 
-// ─── the six commands ───────────────────────────────────────────────────────────────────────
+// ─── the seven commands ─────────────────────────────────────────────────────────────────────
 //
 // `rename_all = "snake_case"` on every one of them: Tauri's default is camelCase argument names,
 // and spec §9.2 wants a Rust field name and its TS name to be literally the same string.
 //
-// There is deliberately **no `get_settings`** — the first tick arrives ≤100 ms after the listener
-// registers — and **no clear-calibration command**: uncalibrated is the initial state, and a wrong
-// offset is retyped (spec §9.1). `get_spectrogram` is the seventh and belongs to `b10`.
+// **Seven, not eight** (spec §9.1). There is deliberately **no `get_settings`** — the first tick
+// arrives ≤100 ms after the listener registers — and **no clear-calibration command**:
+// uncalibrated is the initial state, and a wrong offset is retyped. Six carry settings;
+// `get_spectrogram` is the seventh and the one that carries data.
 //
 // Return values exist for **feel, not truth** (spec §9.2): a picker tap updates from the
 // authoritative return rather than waiting up to 100 ms for the next tick.
@@ -489,6 +545,43 @@ impl AppState {
         self.metrics.lock().unwrap().reset();
         self.settings.lock().unwrap().settings().into()
     }
+
+    /// The picture's history for the **current span** — the whole of spec §9.5's repair.
+    ///
+    /// **Rust owns the picture's history**, so every event that invalidates the canvas is one
+    /// move — *pull again* — rather than four different repairs. Letting the frontend keep its own
+    /// ring was rejected on the dev loop: the picture would be empty for up to two minutes after
+    /// every reload.
+    ///
+    /// This is **the only bulk payload in the design**: ≈138 KB at a 60 s span and ≈276 KB at
+    /// 120 s, which is over the 8192-byte threshold and therefore travels the `ipc://localhost`
+    /// custom protocol rather than by `eval` — the right way round, since it is sent once per
+    /// redraw-from-scratch rather than ten times a second.
+    ///
+    /// **The right edge is the ring's, not the clock's.** [`Metrics::now_slot`] is advanced by the
+    /// tick, so a pull landing between ticks answers as of the last one — up to 100 ms stale, and
+    /// exactly the `now_slot` the frontend was last told. Reading the clock here instead would
+    /// hand back a right edge no tick has mentioned yet.
+    ///
+    /// **It does not touch [`AppState::unsent_from`].** A pull and the ticks around it overlap by
+    /// design: a column may arrive both ways, and drawing a slot twice is drawing the same thing
+    /// twice. Advancing the cursor to suppress that would turn every pull into a small hole in
+    /// whatever the pull itself did not cover.
+    pub fn spectrogram(&self) -> Vec<Column> {
+        // Lock order, as everywhere: metrics, then spectrum, then settings.
+        let now_slot = self.metrics.lock().unwrap().now_slot();
+        let spectrum = self.spectrum.lock().unwrap();
+        let window_s = self.settings.lock().unwrap().settings().window_s;
+
+        // The span **follows the L_eq window** (spec §7.1), which is why there is no second time
+        // setting and why the two axes on screen cannot disagree.
+        let span = (window_s as u64 * 1000 / SLOT_MS).max(1);
+        spectrum
+            .columns_in(now_slot.saturating_sub(span - 1), now_slot)
+            .into_iter()
+            .map(Column::from)
+            .collect()
+    }
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -536,6 +629,16 @@ pub fn reset(state: State<'_, AppState>) -> WireSettings {
     state.apply_reset()
 }
 
+/// The seventh command, and the only one that is not about settings — spec §9.1, §9.5.
+///
+/// **What makes the frontend call it**, verbatim from spec §9.5: mount or webview reload; canvas
+/// resize or orientation change; a window-length change. And what deliberately does **not**: a
+/// calibration offset change, Reset, a weighting change.
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_spectrogram(state: State<'_, AppState>) -> Vec<Column> {
+    state.spectrogram()
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
@@ -563,6 +666,16 @@ mod tests {
         }
     }
 
+    /// A column whose 32 values are all different, so the expected JSON below pins the band
+    /// **order** as well as the count — a reversed or rotated row layout would still be 32 floats.
+    fn column(slot: u64) -> Column {
+        let mut bands = [0.0f32; BANDS];
+        for (row, band) in bands.iter_mut().enumerate() {
+            *band = row as f32 - 90.0;
+        }
+        Column { slot, bands }
+    }
+
     fn running() -> CaptureState {
         CaptureState::Running(CaptureFacts {
             device: "test".into(),
@@ -588,30 +701,40 @@ mod tests {
             (Some(-33.3), 10.0),
             calibrated(),
             Input::Capturing,
+            vec![column(418_752)],
         );
 
         assert_eq!(
             serde_json::to_string(&tick).unwrap(),
-            r#"{"now_slot":418752,"meter":{"leq":68.4,"inst":71.2,"max":74.9,"coverage_s":41.3,"cal_leq":68.1,"cal_coverage_s":10.0,"input":"capturing"},"settings":{"weighting":"C","time_weighting":"S","window_s":60,"offset_db":101.4,"unit":"dB"},"columns":[]}"#
+            r#"{"now_slot":418752,"meter":{"leq":68.4,"inst":71.2,"max":74.9,"coverage_s":41.3,"cal_leq":68.1,"cal_coverage_s":10.0,"input":"capturing"},"settings":{"weighting":"C","time_weighting":"S","window_s":60,"offset_db":101.4,"unit":"dB"},"columns":[{"slot":418752,"bands":[-90.0,-89.0,-88.0,-87.0,-86.0,-85.0,-84.0,-83.0,-82.0,-81.0,-80.0,-79.0,-78.0,-77.0,-76.0,-75.0,-74.0,-73.0,-72.0,-71.0,-70.0,-69.0,-68.0,-67.0,-66.0,-65.0,-64.0,-63.0,-62.0,-61.0,-60.0,-59.0]}]}"#
         );
     }
 
-    /// ≈460 bytes is not decoration: above 8192 Tauri's IPC leaves its fast path, and this design
-    /// publishes 10 times a second forever.
+    /// ≈460 bytes empty is not decoration: above 8192 Tauri's IPC leaves its fast path, and this
+    /// design publishes 10 times a second forever.
+    ///
+    /// **A column costs about 300 bytes**, so the one-column tick that is the steady state is
+    /// still an order of magnitude clear of the threshold, and even a ten-column tick after a
+    /// stall sits under it. Beyond that it does cross, and `b10` spends it deliberately:
+    /// correctness beats the fast path in the one case where they disagree, because the
+    /// alternative is dropping real data on the floor.
     #[test]
     fn the_tick_stays_on_the_ipc_fast_path() {
-        let tick = tick_payload(
-            418_752,
-            levels(),
-            (Some(-33.3), 10.0),
-            calibrated(),
-            Input::Capturing,
-        );
-        let bytes = serde_json::to_string(&tick).unwrap().len();
-        assert!(
-            bytes < 8192,
-            "tick is {bytes} bytes, over the bulk-path threshold"
-        );
+        for count in [0, 1, 10] {
+            let tick = tick_payload(
+                418_752,
+                levels(),
+                (Some(-33.3), 10.0),
+                calibrated(),
+                Input::Capturing,
+                (0..count).map(|n| column(418_752 - n)).collect(),
+            );
+            let bytes = serde_json::to_string(&tick).unwrap().len();
+            assert!(
+                bytes < 8192,
+                "a {count}-column tick is {bytes} bytes, over the bulk-path threshold"
+            );
+        }
     }
 
     /// `--` is `null`, never a sentinel like `-999` (spec §9.2). The coverage figure is **not**
@@ -625,7 +748,14 @@ mod tests {
             max: None,
             coverage_s: 0.0,
         };
-        let tick = tick_payload(7, nothing, (None, 0.0), Settings::default(), Input::Denied);
+        let tick = tick_payload(
+            7,
+            nothing,
+            (None, 0.0),
+            Settings::default(),
+            Input::Denied,
+            Vec::new(),
+        );
         let json = serde_json::to_string(&tick).unwrap();
 
         assert_eq!(
@@ -646,6 +776,7 @@ mod tests {
             (Some(-33.3), 10.0),
             Settings::default(),
             Input::Capturing,
+            Vec::new(),
         );
         let cal = tick_payload(
             0,
@@ -653,6 +784,7 @@ mod tests {
             (Some(-33.3), 10.0),
             calibrated(),
             Input::Capturing,
+            Vec::new(),
         );
 
         assert_eq!(raw.meter.leq, Some(-33.0));
@@ -680,11 +812,19 @@ mod tests {
             (None, 0.0),
             Settings::default(),
             Input::Capturing,
+            Vec::new(),
         );
         assert_eq!(uncalibrated.settings.unit, Unit::DbFs);
         assert_eq!(uncalibrated.settings.offset_db, None);
 
-        let calibrated = tick_payload(0, levels(), (None, 0.0), calibrated(), Input::Capturing);
+        let calibrated = tick_payload(
+            0,
+            levels(),
+            (None, 0.0),
+            calibrated(),
+            Input::Capturing,
+            Vec::new(),
+        );
         assert_eq!(calibrated.settings.unit, Unit::Db);
     }
 
@@ -701,7 +841,14 @@ mod tests {
             offset_db: Some(101.438_71),
             ..Settings::default()
         };
-        let tick = tick_payload(0, noisy, (None, 9.964), settings, Input::Capturing);
+        let tick = tick_payload(
+            0,
+            noisy,
+            (None, 9.964),
+            settings,
+            Input::Capturing,
+            Vec::new(),
+        );
 
         assert_eq!(tick.meter.inst, Some(71.2));
         assert_eq!(tick.meter.leq, Some(68.4));
@@ -777,6 +924,8 @@ mod tests {
     const TONE_DB: f64 = -3.010_299_956_639_812;
     /// One slot plus one block: the real quantisation of the coverage figure (`b03`).
     const COVERAGE_TOLERANCE: f64 = 0.2;
+    /// Samples per 100 ms slot at 48 kHz — one hop, and therefore one column.
+    const HOP: usize = 4_800;
 
     /// The app, minus Tauri and minus the microphone.
     ///
@@ -787,6 +936,8 @@ mod tests {
     struct Rig {
         state: AppState,
         now: Instant,
+        epoch: Instant,
+        fed: usize,
     }
 
     impl Rig {
@@ -803,7 +954,54 @@ mod tests {
             Rig {
                 state: AppState::new(Capture::new(settings.weighting), metrics, store),
                 now: start,
+                epoch: start,
+                fed: 0,
             }
+        }
+
+        /// Moves the clock, which is the only thing that advances the ring index.
+        fn wait(&mut self, secs: f64) {
+            self.now += Duration::from_secs_f64(secs);
+        }
+
+        /// The slot the clock is in — what the next [`Rig::tick`] will report as `now_slot`.
+        fn slot(&self) -> u64 {
+            (self.now - self.epoch).as_millis() as u64 / SLOT_MS
+        }
+
+        /// Drives the **second** pipeline by hand: `hops` slots' worth of raw samples ingested,
+        /// then filed against `slot` — the same two calls in the same order as [`collect`].
+        ///
+        /// It has to be by hand. [`Capture::new`] builds the capture side with no queues at all
+        /// (`b05`), so `drain_samples` yields nothing and there is no hardware-free way to put
+        /// audio in front of the FFT through the real seam. What is exercised below is therefore
+        /// everything downstream of the drain — the filing, the cursor and the wire — which is the
+        /// whole of what this ticket added.
+        ///
+        /// `amplitude` at zero is spec §16.8's gap: a hop of exact zeros is **a gap, not a quiet
+        /// column**, or a denied microphone would draw a picture at the bottom of the colour
+        /// window.
+        fn feed(&mut self, hops: usize, amplitude: f64) {
+            let slot = self.slot();
+            let samples: Vec<f32> = (0..hops * HOP)
+                .map(|n| {
+                    let t = (self.fed + n) as f64 / FS;
+                    (amplitude * (std::f64::consts::TAU * 440.0 * t).sin()) as f32
+                })
+                .collect();
+            self.fed += samples.len();
+
+            let mut spectrum = self.state.spectrum.lock().unwrap();
+            spectrum.ingest(&samples);
+            spectrum.publish(slot);
+        }
+
+        /// Fills the FFT's 8192-sample buffer and flushes whatever that filed onto the wire, so a
+        /// test that follows is measuring its own columns rather than the priming ones.
+        fn prime(&mut self) {
+            self.wait(0.2);
+            self.feed(2, 0.5);
+            self.tick();
         }
 
         /// Deposits `secs` of steady tone on a synthetic clock, one block at a time, exactly as
@@ -1129,6 +1327,243 @@ mod tests {
         assert_eq!(tick.settings.window_s, 120);
         assert_eq!(tick.settings.time_weighting, TimeWeighting::Fast);
         assert_eq!(tick.settings.unit, Unit::Db);
+    }
+
+    // ── the picture's half of the bridge: spec §9.1's `columns` and §9.5's pull ──────────────
+    //
+    // Every one of these goes through [`collect`] or through the inherent method the command
+    // delegates to, so what is asserted is what the frontend would have been sent.
+
+    /// **Every real column since the last publish, each carrying its absolute slot index** (spec
+    /// §9.2) — and the reason is correctness, not robustness.
+    ///
+    /// Spec §6.2's clock-advanced ring means a late tick — a timer on a phone — has two or three
+    /// genuinely completed slots behind it. A one-column payload would drop the rest on the floor,
+    /// and the picture would draw holes where the room was making noise.
+    #[test]
+    fn a_late_tick_ships_its_whole_backlog_with_monotonic_slot_indices() {
+        let mut rig = Rig::new();
+        rig.prime();
+
+        // Three slots' worth of audio arriving under one tick: the stall case.
+        rig.wait(0.3);
+        rig.feed(3, 0.5);
+
+        let tick = rig.tick();
+        assert_eq!(tick.now_slot, 5);
+        assert_eq!(
+            tick.columns.iter().map(|c| c.slot).collect::<Vec<_>>(),
+            vec![3, 4, 5],
+            "a late tick shipped one column instead of its backlog"
+        );
+        assert!(tick.columns.iter().all(|c| c.bands.len() == BANDS));
+    }
+
+    /// **A slot filed *after* its own tick still reaches the wire**, which is what makes the
+    /// cursor `(last shipped, now_slot]` rather than `now_slot + 1`.
+    ///
+    /// Straight out of `b09`'s resolution: a tick that completes zero hops files nothing, and the
+    /// next tick fills that slot retroactively as `now_slot − 1`. A cursor parked at `now_slot + 1`
+    /// steps over it — and the column exists in the ring, so [`AppState::spectrogram`] hands it
+    /// back, and the picture disagrees with itself across a reload one slot at a time.
+    #[test]
+    fn a_slot_filed_after_its_own_tick_still_reaches_the_wire() {
+        let mut rig = Rig::new();
+        rig.prime();
+
+        // Slot 3 passes with nothing filed for it yet.
+        rig.wait(0.1);
+        assert_eq!(rig.tick().columns, Vec::new());
+
+        // Two hops land under slot 4's tick, so the older of them is slot 3 — filed after the
+        // tick that already reported slot 3 as the present.
+        rig.wait(0.1);
+        rig.feed(2, 0.5);
+
+        assert_eq!(
+            rig.tick()
+                .columns
+                .iter()
+                .map(|c| c.slot)
+                .collect::<Vec<_>>(),
+            vec![3, 4],
+            "the slot filed retroactively never reached the wire"
+        );
+    }
+
+    /// **Stopping the audio produces absent indices, not zero-valued columns** (spec §7.3).
+    ///
+    /// The gap needs no marker: a slot in `(last_drawn, now_slot]` with no column *is* the hole,
+    /// and `now_slot` keeps climbing so the frontend can tell the silence is *current*. Both
+    /// halves are asserted, because the second is what makes a dead stream read as a hole rather
+    /// than as a peaceful room.
+    #[test]
+    fn stopping_the_audio_leaves_absent_indices_and_a_climbing_right_edge() {
+        let mut rig = Rig::new();
+        rig.prime();
+        rig.wait(0.1);
+        rig.feed(1, 0.5);
+        assert_eq!(rig.tick().columns.len(), 1);
+
+        rig.wait(2.0);
+        let tick = rig.tick();
+        assert_eq!(tick.columns, Vec::new(), "silence drew columns");
+        assert_eq!(tick.now_slot, 23, "the right edge stopped with the audio");
+    }
+
+    /// Spec §16.8, on the wire: **a hop of exact zeros is a gap, not a quiet column.** Otherwise a
+    /// denied microphone draws a picture at the bottom of the colour window, which reads as a very
+    /// quiet room — the one reading the whole gap rule exists to prevent.
+    ///
+    /// Distinct from the test above: the frame buffer is full here, so the only thing making these
+    /// slots holes is the zero power.
+    #[test]
+    fn a_denied_microphones_exact_zeros_are_holes_rather_than_a_very_quiet_room() {
+        let mut rig = Rig::new();
+        rig.prime();
+
+        rig.wait(0.3);
+        rig.feed(3, 0.0);
+
+        let tick = rig.tick();
+        assert_eq!(tick.columns, Vec::new(), "exact zeros drew columns");
+        assert_eq!(tick.now_slot, 5);
+    }
+
+    /// No column crosses the bridge twice, and a quiet tick is empty rather than a repeat of the
+    /// last one. Drawing the same slot twice is harmless; drawing it *again at the right edge*
+    /// would smear the newest column across the silence after it.
+    #[test]
+    fn a_column_is_shipped_once_and_a_quiet_tick_is_empty() {
+        let mut rig = Rig::new();
+        rig.prime();
+        rig.wait(0.2);
+        rig.feed(2, 0.5);
+
+        assert_eq!(rig.tick().columns.len(), 2);
+        rig.wait(0.1);
+        assert_eq!(rig.tick().columns, Vec::new(), "columns were re-shipped");
+    }
+
+    /// **`get_spectrogram` returns the columns for the current span** (spec §9.1), and the span
+    /// **follows the L_eq window** — which is why a window-length change is one of the three rows
+    /// in §9.5's re-pull table and why the two time axes on screen cannot disagree.
+    #[test]
+    fn the_pull_returns_the_current_span_and_the_span_follows_the_window() {
+        let mut rig = Rig::new();
+
+        // 121 real columns ending at slot 130: more than a 10 s span holds, less than a 60 s one.
+        rig.wait(13.0);
+        rig.feed(122, 0.5);
+        assert_eq!(rig.tick().now_slot, 130);
+
+        let at_60 = rig.state.spectrogram();
+        assert_eq!(
+            at_60.len(),
+            121,
+            "a 60 s span should hold everything there is"
+        );
+        assert_eq!(at_60.first().unwrap().slot, 10);
+        assert_eq!(at_60.last().unwrap().slot, 130);
+
+        rig.state
+            .apply_window_length(10)
+            .expect("10 s is permitted");
+        let at_10 = rig.state.spectrogram();
+        assert_eq!(at_10.len(), 100, "a 10 s span is 100 slots");
+        assert_eq!(at_10.first().unwrap().slot, 31);
+        assert_eq!(at_10.last().unwrap().slot, 130);
+    }
+
+    /// The pull and the tick **overlap by design and do not steal from each other**.
+    ///
+    /// A column may legitimately arrive both ways — drawing a slot twice is drawing the same thing
+    /// twice. Advancing the tick's cursor from the pull to suppress that would instead punch a
+    /// small hole in whatever the pull itself did not cover, which is a real loss traded for a
+    /// cosmetic one. Two pulls back to back are not contrived either: mount and the canvas's first
+    /// resize land together.
+    ///
+    /// It also pins the pull's **right edge**, which is the ring's and not the clock's: between
+    /// ticks it answers as of the last one, so slots already filed but not yet reported by any
+    /// tick are not handed back early. That is the property that keeps a pull and the `now_slot`
+    /// the frontend is holding from disagreeing about where the present is.
+    #[test]
+    fn a_pull_does_not_steal_the_columns_the_next_tick_owes() {
+        let mut rig = Rig::new();
+        rig.prime();
+        rig.wait(0.3);
+        rig.feed(3, 0.5);
+
+        // Filed but not yet ticked: the right edge is still the last tick's.
+        let early = rig.state.spectrogram();
+        assert_eq!(early.last().unwrap().slot, 2);
+
+        assert_eq!(
+            rig.tick()
+                .columns
+                .iter()
+                .map(|c| c.slot)
+                .collect::<Vec<_>>(),
+            vec![3, 4, 5]
+        );
+
+        assert_eq!(rig.state.spectrogram().len(), 4);
+        assert_eq!(rig.state.spectrogram().len(), 4);
+
+        // And the cursor is where the tick left it, not where a pull moved it.
+        rig.wait(0.2);
+        rig.feed(2, 0.5);
+        assert_eq!(
+            rig.tick()
+                .columns
+                .iter()
+                .map(|c| c.slot)
+                .collect::<Vec<_>>(),
+            vec![6, 7],
+            "the pull consumed columns the tick still owed"
+        );
+    }
+
+    /// **Nothing the reader can press disturbs the picture** — spec §6.11's fourth column is
+    /// empty, and §9.3 says so about Reset in particular, *because it reads as a bug otherwise*.
+    ///
+    /// Settled on asymmetry of cost: the number refills honestly in a window length, but 60 s of
+    /// rumble stripe cannot be recovered once wiped, and the stripe is the entire reason the
+    /// picture exists. The consequence, plainly: shortly after a Reset the number describes this
+    /// talk and the picture describes the last 60 s of the room.
+    ///
+    /// **The calibration leg is the one that looks like an oversight and is arithmetic** (spec
+    /// §9.5): §7.1 shifts the dB colour window *by the offset* and the band values shift with it,
+    /// so every colour is unchanged and only the legend relabels. Asserted as bit-identical bands
+    /// across a calibration that moves every number on screen by 101.4 dB.
+    #[test]
+    fn no_command_clears_or_shifts_the_picture() {
+        let mut rig = Rig::new();
+        rig.prime();
+        rig.wait(0.3);
+        rig.feed(3, 0.5);
+        rig.tick();
+
+        let before = rig.state.spectrogram();
+        assert_eq!(before.len(), 4);
+
+        rig.state.apply_reset();
+        rig.state.apply_weighting(Weighting::A);
+        rig.state.apply_time_weighting(TimeWeighting::Fast);
+        rig.state
+            .apply_calibration_offset(101.4)
+            .expect("a finite offset");
+
+        // The number did change — this is the act that changes every one of them.
+        let tick = rig.tick();
+        assert_eq!(tick.settings.offset_db, Some(101.4));
+        assert_eq!(tick.settings.unit, Unit::Db);
+
+        assert_eq!(
+            rig.state.spectrogram(),
+            before,
+            "a command cleared or shifted the picture"
+        );
     }
 
     struct TempDir(PathBuf);

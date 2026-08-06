@@ -63,12 +63,15 @@ export interface Meter {
 }
 
 /**
- * One spectrogram column, carrying its **absolute** slot index. Always empty until `b09`; typed
- * from the start so the contract does not change under this file later.
+ * One spectrogram column, carrying its **absolute** slot index.
+ *
+ * The band values are the one thing crossing this bridge that is **not** calibrated, and that is
+ * spec §7.1's arithmetic rather than an oversight: the colour window shifts *by the offset* and
+ * the values shift with it, so every colour is unchanged and only the legend relabels.
  */
 export interface Column {
   slot: number;
-  /** 32 bands (spec §7.1). */
+  /** 32 bands, raw dB re FS, low to high (spec §7.1). */
   bands: number[];
 }
 
@@ -82,6 +85,11 @@ export interface Tick {
   now_slot: number;
   meter: Meter;
   settings: Settings;
+  /**
+   * **Every real column since the previous tick**, oldest first — not one. Required for
+   * correctness rather than robustness: a timer on a phone routinely has two or three genuinely
+   * completed slots behind it, and a one-column payload would drop real data on the floor.
+   */
   columns: Column[];
 }
 
@@ -90,10 +98,55 @@ export interface Tick {
  * deliberately no `get_settings` command.
  *
  * Columns produced between page load and this registering are lost, whatever the transport;
- * `get_spectrogram` (`b10`) is what repairs the picture after a reload.
+ * `getSpectrogram` is what repairs the picture after a reload.
  */
 export function onTick(handler: (tick: Tick) => void): Promise<UnlistenFn> {
   return listen<Tick>("tick", (event) => handler(event.payload));
+}
+
+/**
+ * The picture's history for the **current span** — the seventh command, and the only bulk payload
+ * in the design.
+ *
+ * ≈138 KB at a 60 s span and ≈276 KB at 120 s, so it travels the `ipc://localhost` custom protocol
+ * rather than by `eval` — the right way round for something sent once per redraw-from-scratch.
+ *
+ * **Rust owns the history**, so every event that invalidates the canvas is one move — *pull again*
+ * — rather than four different repairs. Letting this side keep its own ring was rejected on the
+ * dev loop: the picture would be empty for up to two minutes after every reload.
+ *
+ * **What makes the frontend re-pull**, verbatim from spec §9.5:
+ *
+ * | event | re-pull? |
+ * |---|---|
+ * | mount / webview reload | ✓ |
+ * | canvas resize, orientation change | ✓ |
+ * | window length change (10/30/60/120 s) | ✓ |
+ * | calibration offset change | — |
+ * | Reset button | — |
+ * | weighting change (C/A/Z) | — |
+ *
+ * The last three are not omissions and each has its own reason: the offset row is arithmetic
+ * (§7.1 shifts the colour window *by the offset*, so no pixel moves), Reset deliberately does not
+ * clear the picture (§9.3), and the picture is unweighted in every meter mode (§7.2).
+ *
+ * The right edge is the last tick's `now_slot`, so a pull and the tick around it overlap: a column
+ * can arrive both ways, and drawing the same slot twice draws the same thing twice.
+ */
+export function getSpectrogram(): Promise<Column[]> {
+  return invoke<Column[]>("get_spectrogram");
+}
+
+/**
+ * Whether a settings change invalidates the canvas — spec §9.5's three settings rows, in one place
+ * so the two that do nothing cannot be re-litigated at the call site.
+ *
+ * **Only the window length.** It moves the span, so the whole time axis is different. A weighting
+ * change and a calibration change both leave every pixel of the picture exactly where it was; the
+ * second of those looks like an oversight and is not — see `getSpectrogram`.
+ */
+export function pictureNeedsPull(previous: Settings | null, next: Settings): boolean {
+  return previous !== null && previous.window_s !== next.window_s;
 }
 
 /** C / A / Z. Clears the window, the max hold, the smoother and the filter state (spec §6.11). */

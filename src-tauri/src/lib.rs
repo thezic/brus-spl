@@ -89,17 +89,19 @@ pub fn run() {
             bridge::spawn(app.handle().clone());
             Ok(())
         })
-        // Six, and `b10`'s `get_spectrogram` is the seventh. The temporary `capture_diagnostics`
-        // went with `b06`'s readout: the session read-back was never meant to reach the UI (spec
-        // §3.1) — none of it is a condition the reader can act on — so it lives in the log, which
-        // on a device means Xcode's console rather than `devicectl … --console` (spec §2.2).
+        // Seven, which is the complete set (spec §9.1) — six settings commands and
+        // `get_spectrogram`. The temporary `capture_diagnostics` went with `b06`'s readout: the
+        // session read-back was never meant to reach the UI (spec §3.1) — none of it is a
+        // condition the reader can act on — so it lives in the log, which on a device means
+        // `idevicesyslog` rather than `devicectl … --console` (spec §2.2).
         .invoke_handler(tauri::generate_handler![
             bridge::set_weighting,
             bridge::set_time_weighting,
             bridge::set_window_length,
             bridge::set_calibration_from_reference,
             bridge::set_calibration_offset,
-            bridge::reset
+            bridge::reset,
+            bridge::get_spectrogram
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -898,11 +898,19 @@ offset is retyped).
   entry keeps local draft state, which is an input buffer, not a second source of truth.
 - **The tick is a timer, not audio-driven.** It publishes with no audio at all, which is what
   makes settings-in-every-tick and the input state safe.
-- **Every column carries its absolute slot index, and each tick ships every real column since
-  the previous publish.** This is required for **correctness**, not robustness: the clock-advanced
-  ring means a late tick — a timer on a phone — has two or three genuinely completed slots behind
-  it, and a one-column payload would drop real data on the floor. Columns produced between page
-  load and `listen()` registering are lost no matter what the transport is.
+- **Every column carries its absolute slot index, and each tick ships every real column in
+  `(last shipped, now_slot]`.** This is required for **correctness**, not robustness: the
+  clock-advanced ring means a late tick — a timer on a phone — has two or three genuinely completed
+  slots behind it, and a one-column payload would drop real data on the floor. Columns produced
+  between page load and `listen()` registering are lost no matter what the transport is.
+
+  **The range is `(last shipped, now_slot]`, not "the columns this tick filed"** (`b10`). The two
+  differ by one slot and it is a real one: `b09` establishes that a tick completing **zero** hops
+  files nothing, and the next tick fills that slot retroactively as `now_slot − 1`. A cursor parked
+  at `now_slot + 1` steps over it — and the column is in the ring, so `get_spectrogram` hands it
+  back, so the picture disagrees with itself across a reload one slot at a time. It is also the
+  same interval the frontend uses to decide what is a hole, which keeps *what Rust ships from* and
+  *what the canvas draws into* one expression.
 - **Gaps therefore need no marker.** A slot index in `(last_drawn, now_slot]` with no column *is*
   §7.3's hole. Explicit `bands: null` entries were rejected as duplicating what the indices
   already say, at 270 wasted entries for a 27 s hole. `09` finding 8 confirmed this: there is no
@@ -1530,6 +1538,7 @@ list exists so a reader who goes back to a ticket is not misled.
 | `05`'s reset/clear table | **Gains a fourth column, entirely empty** (`08`) — nothing clears the spectrogram ring. |
 | This spec's own §6.11 table, which had no column for the smoother | **Gains one, with a single entry: a weighting change zeroes it** (`b04`) — without it the same row's max-hold clear is defeated within one block, measured 7 dB high. The first correction the build map has made to this spec rather than to a ticket. |
 | This spec's own §16.4, `P_k = 2·|X_k|²/S1²` | **`2·|X_k|²/(N·S2)`** (`b09`) — the first is the coherent gain, right for one bin and **+1.76 dB high for the band sum** §7.1 actually draws. Its own stated intent, *the same dBFS convention as the meter*, is what the second delivers. The second correction the build map has made to this spec rather than to a ticket. |
+| This spec's own §9.2, "every real column **since the previous publish**" | **Every real column in `(last shipped, now_slot]`** (`b10`) — the two read the same and differ by the slot a zero-hop tick leaves behind for its successor to fill (`b09`). The intent stands; the literal reading loses one column per stall, in the ring but never on the wire. The third correction the build map has made to this spec rather than to a ticket. |
 | §13.12's "the 12.5 Hz band is the one band the picture cannot honestly draw" | **Four rows are narrower than a bin, and which one *borrows* depends on the rate** (`b09`) — 20 Hz at 48 kHz, 12.5 Hz at 44.1 kHz. The substance stands; the borrow was never the reason. |
 | `06` d5's default list `(None, C, F, 60 s)` | **`(None, C, S, 60 s)`** — `09` d5 changed the default time weighting after `06` was written. |
 | `07` d8's "the picture is literally what is inside the number" | Read as **the same span, not the same data** (`08` d5) — Reset does not clear the picture. |

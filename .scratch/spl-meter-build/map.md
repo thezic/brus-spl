@@ -413,6 +413,35 @@ difference matter (spec §7).
   nothing has been *seen* — §14.3's eyeball tests are asserted numerically, arm's-length legibility
   is untouched, and nothing has run on the phone.
 
+- [The spectrogram half of the bridge](issues/b10-the-spectrogram-half-of-the-bridge.md)
+  — **Built and green: 122 tests, 8 of them new, both halves driven live under `npm run tauri dev`.
+  §9.1's wire block, §9.5's table and §7.1's span rule all stood; §9.2's one-line description of
+  `columns` did not, and that sentence is the ticket.** **"Every real column since the previous
+  publish" loses exactly one column per stall, and the loss is invisible from either side alone.**
+  Read literally it means *ship what this tick filed*, which is a cursor at `now_slot + 1` — and
+  `b09` already established that a tick completing zero hops files nothing while the next fills
+  that slot retroactively as `now_slot − 1`, so the cursor steps straight over a real column.
+  Nothing fails loudly: the column is in the ring, `get_spectrogram` hands it back, and the symptom
+  is **the picture disagreeing with itself across a reload, one slot at a time** — a hole that heals
+  when you resize the window. The range is **`(last shipped, now_slot]`**, which is also the
+  interval §9.2 already hands the *frontend* for deciding what is a hole, so what Rust ships from
+  and what the canvas draws into are one expression. §9.2 and §17 carry it. Second: **the backlog
+  is real on the desk and it is eight columns** — a deliberate 700 ms stall of the tick thread
+  jumped `now_slot` 200 → 208 and the next tick carried 8 columns in 3098 bytes, with
+  `now_slot − columns` unchanged across it and nothing lost; still inside the 8192-byte fast path,
+  which only breaks past ~20 columns. Third, correcting this ticket's own Done-when: **a stalled
+  *frontend* is not the backlog case at all** — `app.emit` queues and returns, the tick thread holds
+  10 Hz, and a 2 s webview block delivered every queued tick with one column each, widest 1 and
+  gaps 0. Two calls the spec left open: the pull's right edge is **the ring's, not the clock's**
+  (`Metrics::now_slot`, so it answers as of the last tick, which is the `now_slot` the frontend is
+  holding), and a pull **does not advance the tick's cursor** — the overlap is deliberate, since
+  drawing a slot twice draws the same thing twice while suppressing it would punch a hole in
+  whatever the pull did not cover. The re-pull table lives in `src/bridge.ts` beside
+  `pictureNeedsPull`, one predicate that is true for a window-length change and nothing else; the
+  DOM half is `b11`'s, because mount and resize both need a canvas. Untested and said so: nothing
+  on the phone, the live gap evidence is the startup frame-fill hole rather than a stopped stream,
+  and the picture is still not drawn.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
