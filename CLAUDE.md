@@ -6,15 +6,33 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: its destination is `.scratch/spl-meter-mvp/spec.md`, which is now the authority for *what* to build. The reasoning behind every decision lives in that map's `issues/` and `research/`, two links away — the spec cites the ticket that made each call rather than reproducing the argument.
 
-**Implementation runs from `.scratch/spl-meter-build/`** — `map.md` is the index, `issues/b01`–`b15` are the tickets. **Read that map before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b15` here) are deliberately distinct.
+**Open implementation work lives on GitHub Issues** — the map is [#1](https://github.com/thezic/brus-spl/issues/1) and the open tickets are its sub-issues. **Read that map issue before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. See `docs/agents/issue-tracker.md` for the mechanics.
+
+**`.scratch/spl-meter-build/` is the archive of the same effort** — `map.md` holds the Route, the Drop order and ~400 lines of Decisions-so-far, and `issues/b01`–`b13` are the closed tickets in full. Read it too: it is where the reasoning is, and the spec cites it by path. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b15` here) are deliberately distinct, and a third now exists — a bare `#N` means a GitHub issue, while `bNN` and `NN d<n>` mean **read the file**.
 
 The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus six components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. **Tier 1 is closed**, device pass included. **Tier 2 is closed**: `b09` added `spectrum.rs` — the FFT tap, the third-octave banding and the 1200-column ring — `b10` put it on the wire, and `b11` drew it (`Spectrogram.vue` + `spectrogram.ts`), on the phone included. `b12` rehearsed the re-sign and install — read its resolution before signing, because **a rebuild does not re-sign**.
 
 **The venue run (`b13`) is closed: the talk was read and the app worked.** So the map's destination is reached, and §13.14's legibility questions are all answered — ~6 px per band over 32 bands reads fine at arm's length **and in a dim room**, so the band count and the ~205 px height stand. **The app also has its first real calibration**, `+116.7 dB` against a reference meter; every offset before it was a guess, because there was no calibration tool at the desk.
 
-**Two tickets are open, and both are things the talk asked for rather than things it found broken.** [`b14`](.scratch/spl-meter-build/issues/b14-the-live-number-is-too-busy.md) — the live number is too busy at `S`, so §11.4's pre-authorised escape (per-quantity display resolution) gets taken. [`b15`](.scratch/spl-meter-build/issues/b15-the-pictures-frequency-axis.md) — the colour legend is removed on the owner's call and the plot reclaims its 58 px, plus denser frequency labels. **Both carry spec corrections** (§11.4 and §11.7, logged in §17); `b15`'s reverses §11.7's *"the legend stays"*. **Do not answer `b15`'s wish by adding bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would re-derive §7.1's `−90 … −30 dBFS` colour window, which `b13` just confirmed is correct.
+**Two tickets are open, and both are things the talk asked for rather than things it found broken.** [`b14` = #2](https://github.com/thezic/brus-spl/issues/2) — the live number is too busy at `S`, so §11.4's pre-authorised escape (per-quantity display resolution) gets taken. [`b15` = #3](https://github.com/thezic/brus-spl/issues/3) — the colour legend is removed on the owner's call and the plot reclaims its 58 px, plus denser frequency labels. **Both carry spec corrections** (§11.4 and §11.7, logged in §17); `b15`'s reverses §11.7's *"the legend stays"*. **Do not answer `b15`'s wish by adding bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would re-derive §7.1's `−90 … −30 dBFS` colour window, which `b13` just confirmed is correct.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `thezic/brus-spl`, via the `gh` CLI — with the closed `.scratch/` history
+excepted. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, label strings unchanged. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — root `CONTEXT.md` + `docs/adr/`, neither of which exists yet. See
+`docs/agents/domain.md`.
 
 ## Commands
 

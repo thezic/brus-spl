@@ -2,15 +2,25 @@
 
 Labels: `wayfinder:map`
 
+> **This file is the historical record. The live map is GitHub issue
+> [#1](https://github.com/thezic/brus-spl/issues/1).**
+>
+> The tracker moved to GitHub Issues on 2026-08-11, when `b01`–`b13` were already closed. The two
+> tickets still open moved with it — `b14` is [#2](https://github.com/thezic/brus-spl/issues/2),
+> `b15` is [#3](https://github.com/thezic/brus-spl/issues/3) — and their files here are now stubs
+> pointing at them. Everything else below stayed: the Route, the Drop order, ~400 lines of
+> **Decisions so far**, Not yet specified and Out of scope. That is the reasoning this map produced,
+> and it is what the spec cites by path.
+
 ## Destination
 
 A meter **you can trust at a talk**, and which has been read through a real talk at least once.
 
 **Reached.** [The venue run](issues/b13-the-venue-run.md) is closed: the meter was calibrated against
 a real reference instrument, carried into a real room, and read through a real talk — and it worked.
-What remains on this map ([`b14`](issues/b14-the-live-number-is-too-busy.md),
-[`b15`](issues/b15-the-pictures-frequency-axis.md)) is what that talk asked for, not what it was
-missing.
+What remains on this map ([`b14` = #2](https://github.com/thezic/brus-spl/issues/2),
+[`b15` = #3](https://github.com/thezic/brus-spl/issues/3)) is what that talk asked for, not what it
+was missing.
 
 **Scope flexes; the instrument does not.** The tickets are cut so that stopping at any boundary
 leaves a real instrument rather than half of one, and so the cut always falls cleanly between
@@ -37,9 +47,12 @@ work is to build it. Tickets produce **code**, not decisions, and carry a fifth 
 `wayfinder:build`, rather than being mislabelled `task` — the two venue tickets are genuine
 `task` tickets and the distinction is worth keeping visible.
 
-**Tracker:** local markdown, as before. The map is this file, tickets are files under
-`issues/`, and `ls issues/` is the query. Claim a ticket by setting `Status: claimed` before
-any work.
+**Tracker:** local markdown for `b01`–`b13`, **GitHub Issues from 2026-08-11**. The live map is
+issue [#1](https://github.com/thezic/brus-spl/issues/1), tickets are its sub-issues, and
+`gh issue list --label wayfinder:build` is the query — not `ls issues/`, which now lists thirteen
+closed tickets and two stubs. **Claim a ticket with `gh issue edit <n> --add-assignee @me`** before
+any work; the `Status: claimed` convention died with the markdown. `docs/agents/issue-tracker.md`
+is the authority on the mechanics.
 
 **Done, for a build ticket:**
 
@@ -71,7 +84,8 @@ tickets as *on-device diagnostics have to be on screen*, and `b08` found it is o
 from a plain shell after all.
 
 **Commits:** one per ticket, to `main`, following the existing `Resolve ticket NN` pattern.
-There is no remote.
+**There is a remote now** — `git@github.com:thezic/brus-spl.git`, public — so a ticket's commit
+gets pushed rather than just landing locally.
 
 **The provisioning profile on the phone expires 2026-08-13 15:25 UTC.** `b14` and `b15` both want a
 device pass, and after that date a build will not launch — per `b12`, a rebuild does **not** re-sign,
@@ -133,8 +147,8 @@ named. **Both are code; neither re-opens a decision.**
 
 | | Ticket | Blocked by |
 |---|---|---|
-| `b14` | [The live number is too busy](issues/b14-the-live-number-is-too-busy.md) | — |
-| `b15` | [The picture's frequency axis](issues/b15-the-pictures-frequency-axis.md) | — |
+| `b14` | [The live number is too busy](https://github.com/thezic/brus-spl/issues/2) (`#2`) | — |
+| `b15` | [The picture's frequency axis](https://github.com/thezic/brus-spl/issues/3) (`#3`) | — |
 
 They are independent — one is the hero number, the other the picture's chrome — so either order, or
 concurrently.
