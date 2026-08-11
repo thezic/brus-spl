@@ -6,6 +6,12 @@ Labels: `wayfinder:map`
 
 A meter **you can trust at a talk**, and which has been read through a real talk at least once.
 
+**Reached.** [The venue run](issues/b13-the-venue-run.md) is closed: the meter was calibrated against
+a real reference instrument, carried into a real room, and read through a real talk — and it worked.
+What remains on this map ([`b14`](issues/b14-the-live-number-is-too-busy.md),
+[`b15`](issues/b15-the-pictures-frequency-axis.md)) is what that talk asked for, not what it was
+missing.
+
 **Scope flexes; the instrument does not.** The tickets are cut so that stopping at any boundary
 leaves a real instrument rather than half of one, and so the cut always falls cleanly between
 them. Which things go first is written down in [Route](#route) rather than decided under pressure.
@@ -67,9 +73,16 @@ from a plain shell after all.
 **Commits:** one per ticket, to `main`, following the existing `Resolve ticket NN` pattern.
 There is no remote.
 
+**The provisioning profile on the phone expires 2026-08-13 15:25 UTC.** `b14` and `b15` both want a
+device pass, and after that date a build will not launch — per `b12`, a rebuild does **not** re-sign,
+so move the cached profile out of `~/Library/Developer/Xcode/UserData/Provisioning Profiles/` and
+rebuild (~48 s, no prompt, no paid account). Read the embedded `ExpirationDate` rather than assuming
+it; `CLAUDE.md` has the command.
+
 ## Route
 
-Three tiers and the venue. Tickets are listed one line each; the bodies hold the detail.
+Two tiers, the venue, and what the venue sent back. Tickets are listed one line each; the bodies
+hold the detail. **`b01`–`b13` are all resolved**; the two open tickets are at the end.
 
 ### Tier 1 — the trustworthy number
 
@@ -108,8 +121,31 @@ date closes in.
 | `b12` | [Re-sign and install rehearsal](issues/b12-re-sign-and-install-rehearsal.md) | `b08` |
 | `b13` | [The venue run](issues/b13-the-venue-run.md) | `b12` |
 
-**[The venue run](issues/b13-the-venue-run.md) is the destination**, not a follow-up. The map
-is done when it is closed.
+**[The venue run](issues/b13-the-venue-run.md) was the destination**, not a follow-up, and **it is
+closed: the talk was read and the app worked.** The instrument is built, calibrated against a real
+reference meter and proven in a real room.
+
+### What the venue sent back
+
+`b13` closes on its own terms, and its terms were *anything that moves a settled parameter graduates
+onto the map as a fresh ticket*. Two did, so the map does not close silently — it closes with these
+named. **Both are code; neither re-opens a decision.**
+
+| | Ticket | Blocked by |
+|---|---|---|
+| `b14` | [The live number is too busy](issues/b14-the-live-number-is-too-busy.md) | — |
+| `b15` | [The picture's frequency axis](issues/b15-the-pictures-frequency-axis.md) | — |
+
+They are independent — one is the hero number, the other the picture's chrome — so either order, or
+concurrently.
+
+**One thing `b13` deliberately did not graduate**: a **readout** on the picture — mark a position,
+get that band's centre frequency and level. It is what Simon's *"pinpoint problematic frequencies"*
+actually wants, and it is **new scope and a real decision** (does marking freeze the picture; what
+is the touch target when a band is ~6 px on glass; does it survive a re-pull). `b15` widens the plot
+by ~17 % and adds labels, which may dissolve most of the need — so the call is **use it at one more
+talk first**, and if the wish survives, give it a short planning map rather than a build ticket that
+decides it quietly. This map's own rule stands: **tickets produce code, not decisions.**
 
 ### Drop order
 
@@ -120,11 +156,21 @@ Not a schedule. **If you have to stop, stop here** — in this order and no othe
    still *honest*, because §6.4's coverage figure reports the hole; it is simply not *recovered*,
    and the fix at the venue is to restart the app. Honest-but-manual was an acceptable
    degradation; nothing else in Tier 1 is. The remaining drop order therefore starts at 2.
-2. **All of Tier 2**, whole. A partial picture is worse than none — §7.1's colour scale only
-   means something with the fixed band layout and the legend behind it.
+2. ~~**All of Tier 2**, whole.~~ — **built, so this slack is spent too.** A partial picture is
+   worse than none: §7.1's colour scale only means something with the fixed band layout and the
+   legend behind it. **`b13` moved half of that reasoning** — the fixed band layout stands and was
+   confirmed in a real room, but the **legend is being removed** by
+   [`b15`](issues/b15-the-pictures-frequency-axis.md) on the owner's judgement that it adds no value.
+   That is not a contradiction of this line so much as a narrowing of it: with no auto-ranging, the
+   same colour still *is* the same absolute level, so the scale keeps its meaning and loses only its
+   on-screen **readout**. Had Tier 2 ever been dropped, none of this would have been learned.
 3. Nothing else. Tier 1 is the instrument; below it there is no meter worth carrying to a room.
    **It is closed** — `b01`–`b08`, device pass included — so this line is now a statement about
    what must not be given back rather than about what might not land.
+
+**Nothing was dropped.** Every ticket on this map landed, so the whole section is history — kept
+because the reasoning is still the right reasoning, and because the trade below is what a future
+version of this instrument would have to make again.
 
 **What you lose by dropping Tier 2**, stated so the trade is made with open eyes: the number
 answers *how loud*, and only the picture answers *what is making it and whether it has been
@@ -494,35 +540,76 @@ difference matter (spec §7).
   to the foreground. Left for Simon because they are physical: charge, the auto-lock eyeball, and
   the reference meter's details.
 
+- [The venue run](issues/b13-the-venue-run.md)
+  — **The talk was read, the app worked, and the instrument met a real room. The map's destination is
+  reached.** All six bring-backs have answers, two of them read off the phone rather than remembered
+  (`C` / `S` / `window_s: 30` / `offset_db: 116.7`). **The headline is that the parameter the spec
+  flagged hardest did not move**: §7.1's `−90 … −30 dBFS` colour window, carried as `07`'s residual
+  risk through every ticket since, **fits real speech in a real room**. §11.1's accepted risk **does
+  not bite** — the layout read well and the L_eq beside the hero is enough — and the **dim** half of
+  the arm's-length question closes with the bands legible, so §7.1's band count and §11.7's ~205 px
+  stand in low light too. **The calibration is the first real one this instrument has ever had:**
+  `+116.7 dB` against a reference meter, on the order of +100 dB exactly as §8.4 predicts, which
+  corroborates `b08`'s `measurement_mode: true` from the arithmetic end — §13.9's 21 dB would have
+  put it near +95 or +137. There was no calibration tool at the desk, so `b12`'s `113.26` and every
+  earlier figure were **guesses**; the ~3.4 dB difference is a guess against a measurement and there
+  is nothing in it to explain. Every earlier ticket only ever claimed to verify the *arithmetic*, and
+  all of that stands — what changes is that **§13.6's *precision is not accuracy* now has exactly one
+  reading on the accurate side of it.** Three findings, all about the picture or the hero and none
+  about the pipeline. **Finding 1: `S` is too busy on real speech, and `b08`'s desk verdict of *live
+  rather than twitchy* did not survive a venue.** §11.4 pre-authorised the fix — per-quantity
+  resolution is *"the escape if the hero reads as too busy on real speech"* — and there is no other
+  move, since `S` is already the slower standard weighting and §11.4's *"S is the lever; resolution
+  is not"* rests on `F` moving 1.72 dB per tick. **Finding 2: the colour legend earns nothing, and
+  its 58 px are better spent on the plot** — the owner's call, and legitimate because the argument is
+  new: `09` d9 declined *"space forces the legend out"*, never *"it delivers no value"*. §7.2 survives
+  because `b11` put `unweighted` on the caption line rather than the legend, which is what makes the
+  removal cheap. **Finding 3: the picture says *that* a band is hot, not *which frequency*** — denser
+  labels are cheap, more bands are not, and **more bands would re-derive the very colour window this
+  run just confirmed** (~3 dB per halving, `07` f3/f4), so the band count is expressly not the answer.
+  Graduated as [`b14`](issues/b14-the-live-number-is-too-busy.md) and
+  [`b15`](issues/b15-the-pictures-frequency-axis.md); the tap-to-read **readout** is deliberately not
+  graduated, because `b15` may dissolve most of the need and a new interaction is a decision this map
+  may not make. Unexercised and said so: **nothing interrupted the talk**, so recovery in a venue is
+  untested rather than passed; the **120 s / 276 KB** parse (a 60 s span is the largest with evidence);
+  and **`"denied"` on iOS**, still, after a whole talk.
+
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
 [§13.14](../spl-meter-mvp/spec.md#1314-untested-and-known-to-be-so), whose whole content is
 "never tested, and we know it".
 
-- **What [the venue run](issues/b13-the-venue-run.md) reveals.** It is the first time this
-  design meets a real *room*, and two settled parameters are still waiting on it: §7.1's
-  `−90 … −30 dBFS` colour window (named by `07` as the value most likely to want moving) and
-  §11.1's accepted risk that the dominant number is not the number judged against the ceiling.
-  **The third is answered**: `b08` read the hero on real speech on the phone and `S` is **live
-  rather than twitchy**, which is the first evidence for `09` d5's choice of `S` as the default. A
-  desk is not a venue, but this was the phone and a real voice.
-- ~~**Arm's-length legibility — the band half.**~~ **Answered, and the answer is yes.** `b06`
-  established on a desk that `--` reads as a muted absence rather than a redaction bar and `b08`
-  confirmed it on the phone; `b11` drew the picture, put it on the phone, and Simon gave the verdict
-  the map has been carrying since `07`: **~6 px per band, 32 bands over ~205 px, reads fine at arm's
-  length.** So §7.1's band count and §11.7's height stand, and the correction that was held in
-  reserve for three tickets is not needed. **The *dim* half is still open** — neither the picture
-  nor the hero has been seen in a dark room, and that is [the venue run](issues/b13-the-venue-run.md).
-- **`get_spectrogram` in a WKWebView on the phone.** 276 KB of JSON at a 120 s span parses in
-  a few ms on a desk and has never run on a device. The fallback — a pixel budget passed into
-  the command, aggregating in Rust — costs the single-aggregator property, so it is a trade
-  rather than a fix.
-- **`"denied"` on iOS, still.** The app has run on the phone across `b07` and `b08` with the
-  microphone granted throughout, so §9.4's most useful state remains rendered-but-never-refused by
-  a real denial. It is one tap in Settings, and it did not get taken — it now wants doing before
-  [the venue run](issues/b13-the-venue-run.md), since a denied microphone at a venue is the one
-  failure the reader can actually fix.
+**[The venue run](issues/b13-the-venue-run.md) cleared most of this section**, which is what it was
+for. What it cleared is struck through; what it did not is unchanged below.
+
+- ~~**What [the venue run](issues/b13-the-venue-run.md) reveals.**~~ **Answered, and the headline is
+  that the parameter flagged hardest did not move.** §7.1's `−90 … −30 dBFS` colour window — named by
+  `07` as *the value most likely to want moving* and carried open ever since — **fits real speech in
+  a real room and stands unchanged.** §11.1's accepted risk **does not bite**: the layout of the
+  numbers read well, and having the L_eq permanently beside the hero is enough. The third item,
+  `S`-as-default, went the other way: `b08`'s desk reading of *live rather than twitchy* **did not
+  survive a venue**, and `S` is too busy on real speech — §11.4's named escape, now
+  [`b14`](issues/b14-the-live-number-is-too-busy.md).
+- ~~**Arm's-length legibility — the band half.**~~ ~~**The *dim* half.**~~ **Both answered, both
+  yes.** `b06` established on a desk that `--` reads as a muted absence rather than a redaction bar,
+  `b08` confirmed it on the phone, `b11` got the arm's-length verdict on ~6 px per band — and `b13`
+  closed the last of it **in a dim room**: the numbers read fine and the bands are legible. So §7.1's
+  band count and §11.7's ~205 px height stand in low light too, and the correction held in reserve
+  since `07` is not needed. Simon's *"higher granularity would be good"* is a **diagnostic** wish
+  rather than a legibility failure — [`b15`](issues/b15-the-pictures-frequency-axis.md), and
+  expressly **not** by adding bands, which would re-derive the colour window this run just confirmed.
+- **`get_spectrogram` in a WKWebView on the phone — half answered.** `b13` proved a real pull over
+  real IPC on the device: the window moved 10 → 30 s mid-talk, which is the only case
+  `pictureNeedsPull` fires for, and a 60 s span was used at some point with nothing noticed — so
+  **≈138 KB has parsed on the phone.** The **120 s / 276 KB** worst case is still unrun. The
+  fallback — a pixel budget passed into the command, aggregating in Rust — costs the
+  single-aggregator property, so it remains a trade rather than a fix.
+- **`"denied"` on iOS, still.** The app has run on the phone across `b07`, `b08`, `b11`, `b12` and a
+  whole talk with the microphone granted throughout, so §9.4's most useful state remains
+  rendered-but-never-refused by a real denial. It is one tap in Settings; it was wanted before the
+  venue run and **did not get done**. It cost nothing this time. It is still the one failure a
+  reader at a venue could actually fix, so it is still worth a tap.
 - **`"denied"` on macOS.** Per `CLAUDE.md`, `tauri dev` gets microphone access through the
   responsible parent process, so the desk may report `capturing` where the phone reports
   `denied` — spec §9.4's most useful state is the one hardest to exercise where you are
@@ -538,6 +625,12 @@ Everything here is **in scope and unanswerable until the app exists**. Most of i
   `DeviceChanged`, and that path has never fired here. It also moves the sample rate, which is the
   half the launch-time event could not exercise. Do it with headphones to hand, watching
   `Capture::builds` and the rate in the log.
+- **Interruption and recovery through a whole talk — unexercised, and recorded as such.** `b13`'s
+  answer to *"did anything interrupt it"* was **no**: no Siri call, no route change, no
+  backgrounding across the entire run. That is not evidence the recovery works in a venue, only that
+  a venue did not happen to need it. `b07`'s supervisor and `b08`'s 3-second unaided foreground
+  recovery remain demonstrated **by deliberate provocation** on the desk and in `b07`'s device pass —
+  which is decent evidence, and it is not the same as a talk having survived one.
 - **The 200 ms staleness threshold is reasoned, not measured** (§6.9). iOS drain jitter was
   never characterised — `b05` measured the *tick* at a flat 10.00 Hz, but on macOS, where the
   drain has nothing to be jittery about. If `--` flickers in practice, that number is the dial.
