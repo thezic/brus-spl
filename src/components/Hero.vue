@@ -5,9 +5,13 @@
 // changed a digit at any display resolution; at this size it is dead screen. The cost is stated
 // on the ticket and not hidden here: the number that dominates is not the number judged against
 // the 70 dB ceiling — which is why the L_eq sits beside it with its coverage, never behind a tap.
+//
+// **This number alone is coarser than the tenths it arrives in** — [`liveDb`](../display.ts), spec
+// §11.4, after `b13` found it too busy on real speech at `S`. Per-quantity, because the L_eq and
+// the max hold beside it keep their tenths off the same tick.
 
 import type { Unit } from "../bridge";
-import { db } from "../display";
+import { liveDb } from "../display";
 
 defineProps<{
   /** `NOW · C · slow` — both dimensions, from [`heroLabel`](../display.ts). */
@@ -26,7 +30,7 @@ defineProps<{
          became NOW (spec §11.5), so the state it replaces must not move the rest of the screen
          when it arrives and leaves. -->
     <p class="value">
-      <span v-if="value !== null" class="number">{{ db(value) }}</span>
+      <span v-if="value !== null" class="number">{{ liveDb(value) }}</span>
       <span v-else class="absent">--</span>
     </p>
 
@@ -70,7 +74,11 @@ defineProps<{
      3.09` to clear the page's own padding. `31vw − 12px` is that bound with a little slack, and
      7.5rem caps it once the layout's 26rem width cap takes over from the viewport. A flat rem
      value cannot do this: the size that fits a 375 px phone wastes 15 % of the glyph height on a
-     430 px one, and the size that suits a 430 px one overflows the 375. */
+     430 px one, and the size that suits a 430 px one overflows the 375.
+     **`b14`'s coarsening does not license changing this.** It drops the widest string this
+     component can hold from `−108.4` to `−108`, and the size stays anyway: it is a measurement,
+     the layout is built on it — the wide reflow's column is sized from the same 371 px — and
+     `b14` is a fix for how a number *moves*, not for how much room it takes. */
   font-size: min(7.5rem, calc(31vw - 12px));
   font-variant-numeric: tabular-nums;
   font-weight: 300;
