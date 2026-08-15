@@ -9,8 +9,8 @@ Blocked by: —
 
 `weighting.rs`: the A, C and Z chains, coefficients derived at runtime from the actual sample
 rate, plus the `#[cfg(test)]` module that proves them. Spec
-[§5.3](../../spl-meter-mvp/spec.md#53-the-filters) and
-[§14.1](../../spl-meter-mvp/spec.md#141-the-weighting-filters--a-cargo-test-module-no-new-tooling);
+[§5.3](../../../docs/spec.md#53-the-filters) and
+[§14.1](../../../docs/spec.md#141-the-weighting-filters--a-cargo-test-module-no-new-tooling);
 the full derivation and both tables are in
 [`research/03-iec-weighting-filters.md`](../../spl-meter-mvp/research/03-iec-weighting-filters.md).
 
@@ -200,7 +200,7 @@ were left alone.
 
 ### Where the spec and research were right
 
-Spec [§16](../../spl-meter-mvp/spec.md#16-what-this-spec-decides-that-no-ticket-decided)'s
+Spec [§16](../../../docs/spec.md#16-what-this-spec-decides-that-no-ticket-decided)'s
 eleven choices are untouched by this ticket — none of them concerns the filter. `05` (band
 assignment), `04` (FFT normalisation) and the rest belong to `b03`/`b09`. Nothing in §5.3 was
 found wrong: the section table, the bilinear recipe, the cascade order and the digital 1 kHz

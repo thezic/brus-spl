@@ -30,8 +30,8 @@ Uncommitted. This plan's changes join them in one commit at the end, on a branch
 | Migration scope | **open work only** — the build map + `b14` + `b15` |
 | `.scratch/spl-meter-*` rename | no |
 
-**Why open-work-only.** `spl-meter-mvp/spec.md` is the authority for *what* to build and cites
-tickets by path (`issues/b13-…`) and by mvp number (`05 d2`); `gh` cannot backdate, so 24 closed
+**Why open-work-only.** `docs/spec.md` is the authority for *what* to build and cites tickets by
+path (`issues/b13-…`) and by mvp number (`05 d2`); `gh` cannot backdate, so 24 closed
 tickets would all land stamped today, turning a real chronology into a false one. `map.md` is 667
 lines, ~400 of them "Decisions so far" — a record, not a live document. The tracker earns its keep
 on open work.

@@ -2,7 +2,7 @@
 
 Parent: [SPL Meter MVP](../map.md)
 Type: task
-Status: resolved — [`../spec.md`](../spec.md) written and **approved** (2026-08-05, no notes).
+Status: resolved — [`../spec.md`](../../../docs/spec.md) written and **approved** (2026-08-05, no notes).
 **Every other ticket on the map is resolved.**
 Blocked by: —  (01, 02, 03, 04, 05, 06, 07, 08, 09, 11 all resolved)
 
@@ -16,7 +16,9 @@ decisions: audio backend and permissions, weighting filter approach and coeffici
 the three level metrics and how they're computed, the calibration model and persistence,
 spectrogram parameters, the Rust↔frontend contract, and the screen layout.
 
-Publish it at `.scratch/spl-meter-mvp/spec.md` per the local-tracker convention.
+Publish it at `spec.md` beside this map, per the local-tracker convention. *(It moved to
+[`docs/spec.md`](../../../docs/spec.md) in `#17`, once everything around it had closed and it had
+not.)*
 
 State the accuracy limitations plainly — broadband-offset calibration only, phone mic, no
 IEC 61672 conformance claim — so the spec doesn't imply an instrument this isn't.
@@ -169,7 +171,7 @@ it must not be read as claiming.**
 
 ## Answer
 
-**Written and approved: [`../spec.md`](../spec.md), 18 sections, 1 495 lines.** Approved in
+**Written and approved: [`../spec.md`](../../../docs/spec.md), 18 sections, 1 495 lines.** Approved in
 Plannotator on 2026-08-05 with **no notes** — so nothing here is a revision of what was put up.
 
 Every item this ticket listed is in it, and every decision cites the ticket that made it
@@ -178,8 +180,8 @@ structure: what the app is and the three principles it obeys · platform, build 
 capture · interruptions and gaps · weighting filters · level metrics · spectrogram · calibration ·
 the Rust↔frontend contract · settings and persistence · screen layout · module layout ·
 **accuracy and limitations, 14 subsections** · validation and tests · open questions ·
-[§16](../spec.md#16-what-this-spec-decides-that-no-ticket-decided) ·
-[§17](../spec.md#17-corrections-this-spec-carries) · provenance.
+[§16](../../../docs/spec.md#16-what-this-spec-decides-that-no-ticket-decided) ·
+[§17](../../../docs/spec.md#17-corrections-this-spec-carries) · provenance.
 
 ### What assembling it turned up
 

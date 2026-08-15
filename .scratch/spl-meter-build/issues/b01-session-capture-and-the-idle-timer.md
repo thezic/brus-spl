@@ -9,8 +9,8 @@ Blocked by: —
 
 The bottom of the stack: a configured `AVAudioSession`, a running cpal stream, and per-block
 summaries arriving on a queue the display side can drain. Spec
-[§3](../../spl-meter-mvp/spec.md#3-audio-capture) and
-[§4.4](../../spl-meter-mvp/spec.md#44-the-idle-timer-must-be-disabled).
+[§3](../../../docs/spec.md#3-audio-capture) and
+[§4.4](../../../docs/spec.md#44-the-idle-timer-must-be-disabled).
 
 **`session.rs`** (iOS only, behind `cfg(target_os = "ios")`) — §3.1, in this order and before
 touching cpal:
@@ -154,7 +154,7 @@ part that had to be proven first.
    ~10× headroom. The overflow counter was not separately displayed during the macOS run, so
    "no blocks were dropped" is an inference from the drain counts rather than a reading.
 
-6. **Nothing in spec [§16](../../spl-meter-mvp/spec.md#16-what-this-spec-decides-that-no-ticket-decided)
+6. **Nothing in spec [§16](../../../docs/spec.md#16-what-this-spec-decides-that-no-ticket-decided)
    failed contact with code, of the four items this tier touches.** `rtrb` (§16.2) is 0.3.4 and
    its `Producer::push` returning `Err` on a full queue is exactly the degrade-into-lost-coverage
    shape §6.10 wants — no veto. Channel 0 only above one channel (§16.9) cost one `chunks_exact`

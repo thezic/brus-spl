@@ -8,7 +8,7 @@ Blocked by: [`b03`](b03-the-metrics-pipeline.md), [`b04`](b04-settings-persisten
 ## Build
 
 `bridge.rs`, `src/bridge.ts`, and the thread that publishes. Spec
-[§9](../../spl-meter-mvp/spec.md#9-the-rust--frontend-contract) — the wire contract in §9.1 is
+[§9](../../../docs/spec.md#9-the-rust--frontend-contract) — the wire contract in §9.1 is
 **verbatim** and this ticket implements it as written.
 
 **One event at 10 Hz carrying everything the screen paints, plus commands. The frontend holds

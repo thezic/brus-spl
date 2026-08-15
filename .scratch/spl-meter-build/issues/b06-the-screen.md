@@ -8,7 +8,7 @@ Blocked by: [`b05`](b05-the-bridge-and-the-tick.md)
 ## Build
 
 `App.vue` and `src/components/`: the one screen, minus the picture. Spec
-[§11](../../spl-meter-mvp/spec.md#11-screen-layout-and-presentation).
+[§11](../../../docs/spec.md#11-screen-layout-and-presentation).
 
 ```
         NOW · C · slow        ← both dimensions; they govern the live number and MAX

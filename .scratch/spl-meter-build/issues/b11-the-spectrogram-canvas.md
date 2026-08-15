@@ -7,8 +7,8 @@ Blocked by: [`b10`](b10-the-spectrogram-half-of-the-bridge.md)
 
 ## Build
 
-The picture itself. Spec [§7](../../spl-meter-mvp/spec.md#7-spectrogram) and
-[§11.7](../../spl-meter-mvp/spec.md#117-geometry).
+The picture itself. Spec [§7](../../../docs/spec.md#7-spectrogram) and
+[§11.7](../../../docs/spec.md#117-geometry).
 
 **A scrolling spectrogram — horizontal, time flowing right→left with *now* at the right edge,
 on 32 fixed one-third-octave bands.** It is a spectrogram, **not** a spectrum: Decibel X's

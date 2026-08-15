@@ -8,11 +8,17 @@ A Tauri 2 + Vue 3 + TypeScript + Vite app: an SPL meter for iOS, read at a venue
 works and has been used at one, so the planning and build efforts are both **closed** — new work
 starts by writing a ticket, not by picking one up.
 
-**`.scratch/spl-meter-mvp/spec.md` is the authority for *what* to build.** It cites the ticket behind
-each call rather than reproducing the argument, so the reasoning is always two links away: in that
-map's `issues/` and `research/`, and in `.scratch/spl-meter-build/`, whose `map.md` holds the Route,
-the Drop order and ~400 lines of Decisions-so-far beside `issues/b01`–`b15` in full. Read the cited
-ticket before reopening a decision.
+**`docs/spec.md` is the authority for *what* to build.** It cites the ticket behind
+each call rather than reproducing the argument, so the reasoning is always two links away: in
+`.scratch/spl-meter-mvp/`'s `issues/` and `research/`, and in `.scratch/spl-meter-build/`, whose
+`map.md` holds the Route, the Drop order and ~400 lines of Decisions-so-far beside `issues/b01`–`b15`
+in full. Read the cited ticket before reopening a decision.
+
+**It used to live at `.scratch/spl-meter-mvp/spec.md`, and moved out in
+[#17](https://github.com/thezic/brus-spl/issues/17)** — it was the one living document inside a
+directory this file calls closed history, so a reader who took that at face value skipped the file
+that is actually authoritative. The move was a `git mv` plus link repair and changed nothing the
+spec says; everything still under `.scratch/` genuinely is history.
 
 **Implementation work lives on GitHub Issues** (`thezic/brus-spl`) — see
 `docs/agents/issue-tracker.md`. Three numbering schemes coexist, deliberately: a bare **`#N`** is a
@@ -25,7 +31,8 @@ decisions — nothing settled in the spec gets re-litigated on the tracker.
 is the first, and it ran the whole `.scratch/` shape — a map, prototype and research tickets under
 it, and a spec correction at the end — without a directory. Its decisions are §7.4–§7.5 and its
 reasoning is in `#8`, `#9` and `#10`, which is where a *why* question goes. So `.scratch/` is the
-closed history and the tracker is where planning happens; the spec is still the authority for both.
+closed history and the tracker is where planning happens; `docs/spec.md` is still the authority for
+both.
 
 ### Settled, and easy to undo by accident
 

@@ -8,8 +8,8 @@ Blocked by: [`b02`](b02-the-weighting-filters-and-their-test.md)
 ## Build
 
 `metrics.rs`: the ring, coverage, the F/S smoother, the max hold, and Reset. Spec
-[§6](../../spl-meter-mvp/spec.md#6-level-metrics) in full, tests per
-[§14.2](../../spl-meter-mvp/spec.md#142-the-metrics-pipeline).
+[§6](../../../docs/spec.md#6-level-metrics) in full, tests per
+[§14.2](../../../docs/spec.md#142-the-metrics-pipeline).
 
 **The one idea the whole ticket rests on: the ring is advanced by the monotonic clock, not by
 arriving samples.** The audio callback merely deposits into whichever slot is current when

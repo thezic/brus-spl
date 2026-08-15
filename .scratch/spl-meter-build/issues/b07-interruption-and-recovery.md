@@ -8,7 +8,7 @@ Blocked by: [`b01`](b01-session-capture-and-the-idle-timer.md)
 ## Build
 
 The observer, the reactivation, and the health check. Spec
-[§4](../../spl-meter-mvp/spec.md#4-interruptions-gaps-and-recovery).
+[§4](../../../docs/spec.md#4-interruptions-gaps-and-recovery).
 
 **This is the first ticket to drop if days run short** — see the map's drop order. Without it
 an interruption is still *honest*, because §6.4's coverage reports the hole; it is simply not
