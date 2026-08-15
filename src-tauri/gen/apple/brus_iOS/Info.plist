@@ -40,5 +40,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Brus measures ambient sound pressure levels using the microphone. Audio is analysed on-device and never recorded or transmitted.</string>
 </dict>
 </plist>

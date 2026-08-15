@@ -18,7 +18,7 @@ The capture spike is **gone**, deleted by `b01`, which replaced it with `session
 
 **`b14` and `b15` closed without a device pass, but both were checked on glass afterwards, on 2026-08-15, and both stand.** So the two judgements that were open are answered: the hero's **500 ms** repaint interval (`LIVE_REFRESH_MS`; 300 ms was the alternative) and **eleven frequency labels** at ~17 px pitch (`FREQUENCIES` in `Spectrogram.vue` is the list to thin). Each is still a one-line edit if a room disagrees. The conditions of that check were not recorded, so **treat the dim-room-at-arm's-length read as still open** — it is the one `b13` gave the band count and the ~205 px height, and it is not the same test as a desk look. `b15` was otherwise verified by measurement in `b11`'s harness rather than by eye alone — ticks within 0.6 CSS px of their band centres, and the `copy`-composite scroll still intact.
 
-**The app was called `decibel-meter` through `b15`, and is `Brus` from [#4](https://github.com/thezic/brus-spl/issues/4) on** — `Brus` on screen, `brus` in the manifests, `brus_lib` as the crate, `net.thezic.brus` as the bundle identifier. The repo keeps its `brus-spl` name; the suffix is a GitHub-namespace concern only. **`.scratch/` and the closed bodies of `b01`–`b15` keep the old name on purpose**: they describe work that genuinely happened under it, and this line is the bridge rather than a rewrite of the record. The identifier change gave the app a fresh, empty container on the phone, so **the `+116.7 dB` calibration was carried across by hand** — iOS sandboxes containers per identifier, so no in-app migration was ever possible. The app icon is still stock Tauri; naming it was not the same job as drawing it.
+**The app was called `decibel-meter` through `b15`, and is `Brus` from [#4](https://github.com/thezic/brus-spl/issues/4) on** — `Brus` on screen, `brus` in the manifests, `brus_lib` as the crate, `net.thezic.brus` as the bundle identifier. The repo keeps its `brus-spl` name; the suffix is a GitHub-namespace concern only. **`.scratch/` and the closed bodies of `b01`–`b15` keep the old name on purpose**: they describe work that genuinely happened under it, and this line is the bridge rather than a rewrite of the record. The identifier change gives the app a fresh, empty container on the phone, so **the `+116.7 dB` calibration has to be carried across by hand** — iOS sandboxes containers per identifier, so no in-app migration was ever possible. [#4](https://github.com/thezic/brus-spl/issues/4) holds the checklist, and until it closes, treat the migration as *not yet done*. The app icon is still stock Tauri; naming it was not the same job as drawing it.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
@@ -94,9 +94,10 @@ To force a fresh one: move that profile out of the cache directory and rebuild �
 *certificate* is valid for a year, so this is never a certificate problem. A **new bundle identifier
 needs no forcing at all** — it misses the cache, so the build issues its own profile unprompted.
 
-The profile still cached from 2026-08-15 08:52 UTC belongs to the **old** identifier
-(`net.thezic.decibel-meter`) and died with it in `#4`. `net.thezic.brus` gets its own on its first
-build; read the expiry rather than assuming which one you have.
+`#4` demonstrated the no-forcing case: the first build under `net.thezic.brus` issued its own profile
+unprompted, created 2026-08-15 11:58 UTC and expiring **2026-08-22 11:58 UTC**. The older profile in
+the cache belongs to `net.thezic.decibel-meter` and is dead weight. Read the expiry rather than
+assuming which one you have.
 
 **The stored calibration offset can be pulled off the phone and pushed back**, which is the real
 answer to spec §13.10:
@@ -135,6 +136,16 @@ isn't a known arch` (note the unsubstituted `{arch}` — a Tauri formatting bug,
 message never names the offending value). The same applies at *build* time: `ios dev` and
 `ios build` should also be run with it unset. Check with `echo $FORCE_COLOR` before
 regenerating; recover with `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx tauri ios init`.
+
+**A moved repo directory poisons `src-tauri/target`, and the failure blames something else.** The
+folder was renamed to `brus-spl` at some point while `target/` kept ~2000 absolute paths into the old
+one, and nothing noticed until `#4`'s package rename forced a fresh iOS *release* build. It fails
+with `failed to read plugin permissions: failed to read file
+'…/dev/mine/decibel-meter/src-tauri/target/aarch64-apple-ios/release/…/app_hide.toml': No such file
+or directory` — a path under a directory that no longer exists. It is **not** a permissions problem
+and **not** a `capabilities/default.json` problem, which is what the wording invites. Fix:
+`cargo clean --release --target aarch64-apple-ios`. Desktop and `cargo check` hide it, because those
+profiles had been rebuilt since the move and the iOS release artifacts had not.
 
 **`@tauri-apps/cli` is pinned to an exact version, not `^2`.** The iOS `Info.plist` merge order is undocumented and changed silently between tauri-cli 2.4 and 2.9, and a missing `NSMicrophoneUsageDescription` is a launch-time process kill rather than a build error. After bumping it — or after any `tauri ios build` — run `./scripts/check-ios-plist.sh` to assert the key survived the merge.
 
