@@ -4,23 +4,69 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project state
 
-A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: its destination is `.scratch/spl-meter-mvp/spec.md`, which is now the authority for *what* to build. The reasoning behind every decision lives in that map's `issues/` and `research/`, two links away — the spec cites the ticket that made each call rather than reproducing the argument.
+A Tauri 2 + Vue 3 + TypeScript + Vite app: an SPL meter for iOS, read at a venue's mixing desk. It
+works and has been used at one, so the planning and build efforts are both **closed** — new work
+starts by writing a ticket, not by picking one up.
 
-**Implementation work lives on GitHub Issues** — the map is [#1](https://github.com/thezic/brus-spl/issues/1) and tickets are its sub-issues. **Read that map issue before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. See `docs/agents/issue-tracker.md` for the mechanics. **There is nothing open right now**: the map is complete and every ticket `b01`–`b15` is closed, so new work starts by adding a ticket, not by picking one up.
+**`.scratch/spl-meter-mvp/spec.md` is the authority for *what* to build.** It cites the ticket behind
+each call rather than reproducing the argument, so the reasoning is always two links away: in that
+map's `issues/` and `research/`, and in `.scratch/spl-meter-build/`, whose `map.md` holds the Route,
+the Drop order and ~400 lines of Decisions-so-far beside `issues/b01`–`b15` in full. Read the cited
+ticket before reopening a decision.
 
-**`.scratch/spl-meter-build/` is the archive of the same effort** — `map.md` holds the Route, the Drop order and ~400 lines of Decisions-so-far, and `issues/b01`–`b13` are the closed tickets in full. Read it too: it is where the reasoning is, and the spec cites it by path. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b15` here) are deliberately distinct, and a third now exists — a bare `#N` means a GitHub issue, while `bNN` and `NN d<n>` mean **read the file**.
+**Implementation work lives on GitHub Issues** (`thezic/brus-spl`) — see
+`docs/agents/issue-tracker.md`. Three numbering schemes coexist, deliberately: a bare **`#N`** is a
+GitHub issue, while **`bNN`** and **`NN d<n>`** mean **read the file** under `.scratch/`. The build
+map [#1](https://github.com/thezic/brus-spl/issues/1) and its tickets are closed history rather than
+a queue, and `#4` shows that new work need not hang off it at all. Tickets produce code, not
+decisions — nothing settled in the spec gets re-litigated on the tracker.
 
-The capture spike is **gone**, deleted by `b01`, which replaced it with `session.rs` + `capture.rs`. `b06` built the real screen: `src/App.vue` plus six components under `src/components/`, with the strings that sit beside a number in `src/display.ts`. **Tier 1 is closed**, device pass included. **Tier 2 is closed**: `b09` added `spectrum.rs` — the FFT tap, the third-octave banding and the 1200-column ring — `b10` put it on the wire, and `b11` drew it (`Spectrogram.vue` + `spectrogram.ts`), on the phone included. `b12` rehearsed the re-sign and install — read its resolution before signing, because **a rebuild does not re-sign**.
+### Settled, and easy to undo by accident
 
-**The venue run (`b13`) is closed: the talk was read and the app worked.** So the map's destination is reached, and §13.14's legibility questions are all answered — ~6 px per band over 32 bands reads fine at arm's length **and in a dim room**, so the band count and the ~205 px height stand. **The app also has its first real calibration**, `+116.7 dB` against a reference meter; every offset before it was a guess, because there was no calibration tool at the desk.
+Each of these was decided against an alternative that still looks reasonable from the code alone.
 
-**Both of the talk's two asks are built and closed**, and neither was a thing it found broken. [`b14` = #2](https://github.com/thezic/brus-spl/issues/2) calmed the live number, but **not the way §11.4's escape said to**. Coarsening it to 1 dB was built and reverted on the owner's call — *the decimal stays*. The busyness is a **repaint rate**, not a precision: §6.6's measured 0.351 dB per tick changes a digit on essentially every one of the ten ticks a second, so the hero now repaints at **2 Hz and keeps its tenth**. `LIVE_REFRESH_MS` in `src/components/Hero.vue` is the one constant. **Display resolution is 0.1 dB everywhere again**, so `display.ts` rounds nothing. Two things there are load-bearing: `--` is exempt from the throttle in both directions, because holding a stale number past §6.9's 200 ms threshold is exactly what that rule forbids; and this is **not** §6.10's publish rate — the tick stays at 10 Hz or coverage, Reset and max tracking all break. [`b15` = #3](https://github.com/thezic/brus-spl/issues/3) removed the colour legend on the owner's call and gave the plot 56 of its 58 px, and the frequency axis now carries **the octave ladder, eleven labels where there were four**. **Both carried spec corrections** (§11.4 and §11.7, logged in §17); `b15`'s reverses §11.7's *"the legend stays"*. **Do not answer `b15`'s wish for a finer picture by adding bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would re-derive §7.1's `−90 … −30 dBFS` colour window, which `b13` just confirmed is correct. The map's own note stands: a **readout** on the picture is what "pinpoint problematic frequencies" actually wants, and it is new scope and a real decision — use the wider plot at one more talk first, and give it a planning map rather than a build ticket if the wish survives.
+- **Display resolution is 0.1 dB everywhere** — `display.ts` rounds nothing. Coarsening the hero to
+  1 dB was built and then reverted on the owner's call (`b14`, correcting spec §11.4): *the decimal
+  stays*. The busyness was a **repaint rate**, not a precision — §6.6's measured 0.351 dB per tick
+  changes a digit on essentially every one of the ten ticks a second, so the hero repaints at 2 Hz
+  and keeps its tenth.
+- **That throttle is not the publish rate.** `LIVE_REFRESH_MS` in `src/components/Hero.vue` paces
+  one number on screen; the tick itself stays at 10 Hz or coverage, Reset and max tracking all
+  break (§6.10). And `--` bypasses the throttle in **both** directions — holding a stale number past
+  §6.9's 200 ms staleness threshold is exactly what that rule forbids.
+- **32 third-octave bands at ~205 px**, confirmed legible at the venue (`b13`): ~6 px per band reads
+  fine at arm's length and in a dim room. **Do not answer the wish for a finer picture by adding
+  bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would
+  re-derive §7.1's `−90 … −30 dBFS` colour window that `b13` just confirmed. What "pinpoint
+  problematic frequencies" actually wants is a **readout** on the picture: new scope and a real
+  decision, so give it a planning map rather than a build ticket.
+- **The calibration offset is `+116.7 dB`**, the first real one — measured against a reference meter
+  at the venue (`b13`), where every value before it was a guess. It lives in the phone's container,
+  not the repo; the `devicectl` pull/push below is how it moves.
+- **No frontend test runner, and no linter or formatter beyond `cargo clippy`/`cargo fmt`.** Closed
+  deliberately by mvp ticket `10`, with `src/bridge.ts` as the single accepted untested seam; Rust is
+  covered by `cargo test` (`b02`), which needed no tooling decision. Ask before adding one.
 
-**`b14` and `b15` closed without a device pass, but both were checked on glass afterwards, on 2026-08-15, and both stand.** So the two judgements that were open are answered: the hero's **500 ms** repaint interval (`LIVE_REFRESH_MS`; 300 ms was the alternative) and **eleven frequency labels** at ~17 px pitch (`FREQUENCIES` in `Spectrogram.vue` is the list to thin). Each is still a one-line edit if a room disagrees. The conditions of that check were not recorded, so **treat the dim-room-at-arm's-length read as still open** — it is the one `b13` gave the band count and the ~205 px height, and it is not the same test as a desk look. `b15` was otherwise verified by measurement in `b11`'s harness rather than by eye alone — ticks within 0.6 CSS px of their band centres, and the `copy`-composite scroll still intact.
+Two constants are one-line judgement calls a room may disagree with, both checked on glass on
+2026-08-15: `LIVE_REFRESH_MS = 500` in `Hero.vue` (300 ms was the alternative) and the eleven-entry
+`FREQUENCIES` ladder in `Spectrogram.vue` (~17 px pitch, the list to thin). The conditions of that
+check went unrecorded, so **treat the dim-room-at-arm's-length read as still open** — a desk look is
+not the same test.
 
-**The app was called `decibel-meter` through `b15`, and is `Brus` from [#4](https://github.com/thezic/brus-spl/issues/4) on** — `Brus` on screen, `brus` in the manifests, `brus_lib` as the crate, `net.thezic.brus` as the bundle identifier. The repo keeps its `brus-spl` name; the suffix is a GitHub-namespace concern only. **`.scratch/` and the closed bodies of `b01`–`b15` keep the old name on purpose**: they describe work that genuinely happened under it, and this line is the bridge rather than a rewrite of the record. The identifier change gave the app a fresh, empty container on the phone, so **the `+116.7 dB` calibration was carried across by hand** in `#4` — pulled from the old container, pushed into the new one, and confirmed on screen. iOS sandboxes containers per identifier, so no in-app migration was ever possible. The pulled file also held **`window_s: 30`, not the default 60**, which is why the checklist pulled the file rather than trusting the one number everybody remembered. The app icon is still stock Tauri; naming it was not the same job as drawing it.
+### The rename
 
-No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
+**The app was called `decibel-meter` through `b15`, and is `Brus` from
+[#4](https://github.com/thezic/brus-spl/issues/4) on**, under the bundle identifier
+`net.thezic.brus`. The repo keeps its `brus-spl` name — the suffix is a GitHub-namespace concern
+only — and **`.scratch/` plus the closed issue bodies keep the old name on purpose**: they describe
+work that genuinely happened under it, so this line is the bridge rather than a rewrite of the
+record.
+
+**iOS sandboxes app containers per identifier**, so the rename gave the app a fresh, empty one and
+no in-app migration was ever possible: `#4` carried the calibration across by hand, pulling from the
+old container and pushing into the new. The pulled file also held **`window_s: 30`, not the default
+60**, which is why the checklist moved the file rather than trusting the one number everybody
+remembered. The app icon is still stock Tauri; naming the app was not the same job as drawing it.
 
 ## Agent skills
 
@@ -160,7 +206,7 @@ profiles had been rebuilt since the move and the iOS release artifacts had not.
 
 Two processes, one repo:
 
-- **Frontend** (`src/`) — Vue 3 SFCs with `<script setup>`, mounted in `src/main.ts`. TypeScript is `strict` with `noUnusedLocals`/`noUnusedParameters`, so unused bindings fail the build.
+- **Frontend** (`src/`) — Vue 3 SFCs with `<script setup>`, mounted in `src/main.ts`. TypeScript is `strict` with `noUnusedLocals`/`noUnusedParameters`, so unused bindings fail the build. Every string that sits beside a number on screen lives in `src/display.ts`.
 - **Rust backend** (`src-tauri/src/`) — `main.rs` is a thin shim that calls `run()` in `lib.rs`; all setup belongs in `lib.rs` (the split exists so mobile targets can share the lib entry point). The crate is named `brus_lib`.
 
 The two communicate over Tauri commands: a `#[tauri::command]` fn registered in `tauri::generate_handler![]`, called from the frontend with `invoke("name", { args })` from `@tauri-apps/api/core`.
@@ -176,6 +222,11 @@ The two communicate over Tauri commands: a `#[tauri::command]` fn registered in 
 - **`inputmode="decimal"` on iOS offers the locale's decimal separator and no other.** On a comma-locale phone there is no `.` key at all, so `Number(text)` on the raw field value is `NaN` for every decimal the user can actually type, and the control simply stays disabled with nothing on screen to explain it. Any numeric input must accept `,` as well as `.` — see `typed()` in `src/components/SettingsSheet.vue`. Not reproducible on the desk in any way: the Mac keyboard has a dot.
 
 ### The picture
+
+Columns are made in Rust — `src-tauri/src/spectrum.rs` is the FFT tap, the third-octave banding and
+the 1200-column ring — and pulled across by `get_spectrogram` in `src/bridge.ts`. The picture's
+arithmetic lives in `src/spectrogram.ts` (colour ramp, dB window, column-into-pixel budget),
+deliberately DOM-free; the component owns the canvases and the events.
 
 `src/components/Spectrogram.vue` draws on **two canvases, and the split is load-bearing**: an
 offscreen `buckets × 32` canvas is the only thing ever appended to or scrolled, and the visible
