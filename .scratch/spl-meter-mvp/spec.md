@@ -1195,8 +1195,10 @@ Styled **in the same family as the unit label and the coverage figure, never as 
   16 labels at ~11.4 px pitch leaves under 2 px between glyph boxes, which is not legible in the
   dim room at arm's length `b13` established as the real reading condition, and it is a
   2/3-octave series nobody thinks in. Labels are §7.1's nominal centres and each sits on the row
-  it names; the bottom row is deliberately unlabelled, since §13.12 puts the four rows under
-  31.5 Hz below one FFT bin. **The band count is not what changed here** — see §7.1: energy-summed
+  it names; the bottom row (12.5 Hz) is unlabelled only because the octave ladder starts at 16 —
+  **not** for bin-width honesty, since §13.12 puts 12.5, 16, 20 *and* 25 Hz below one bin, and that
+  reasoning would silence four rows rather than one.
+  **The band count is not what changed here** — see §7.1: energy-summed
   rows scale with bandwidth, so finer bands would re-derive the colour window `b13` just confirmed.
 - **The window length is visible near the picture**, because §7.1 ties the span to it. `LCeq 60s`
   above and `−60s … now` below both carry it.

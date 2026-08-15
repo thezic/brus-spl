@@ -25,33 +25,27 @@ const WORD: Record<TimeWeighting, string> = { F: "fast", S: "slow" };
  * Not decoration: `U+2212` is figure-width in the system faces, so it lines up under
  * `font-variant-numeric: tabular-nums` where a hyphen does not — and the uncalibrated state is
  * the one the app starts life in (spec §11.5), where every hero number carries one.
+ *
+ * Every number on screen goes through here, which is what keeps that one rule in one place.
  */
+function fixed(value: number, decimals: number): string {
+  return value.toFixed(decimals).replace("-", "−");
+}
+
+/** A dB value at the 0.1 dB the wire carries — the L_eq, the max hold and the calibration slice. */
 export function db(value: number): string {
-  return value.toFixed(1).replace("-", "−");
+  return fixed(value, 1);
 }
 
 /**
  * The live number's display step, in decibels — **the live number's alone** (spec §11.4).
  *
  * The escape §11.4 pre-authorised, taken because `b13`'s venue run answered *"does the hero feel
- * right on real speech at S?"* with **no, it is too busy**. Not a setting and not a general
+ * right on real speech at S?"* with **no, it is too busy** (`b14`). Not a setting and not a general
  * coarsening: the L_eq is judged against a ceiling and is already perfectly stable at tenths, so
  * spending a tenth there to calm a different number was rejected and stays rejected.
  *
- * Why 1 and not 0.5, from §6.6's measured 0.351 dB per 100 ms tick at S. A jump of `d` across a
- * grid of step `r` changes a digit with probability `min(1, d/r)`, so at 10 ticks/s:
- *
- * | step | digit changes/s |
- * |---|---|
- * | 0.1 (before) | ~10 — every single tick |
- * | 0.5 | ~7.0 |
- * | **1** | **~3.5** |
- *
- * 0.5 dB buys a third off a number that changes on every tick; 1 dB buys two thirds, and against
- * the 6.8 dB of range S covers it still leaves ~7 distinct readings, so the number stays visibly
- * live rather than parked. (The model over-predicts where `d ≳ r` — it says 10/s for §6.6's F-at-
- * 1 dB case, measured at 8.3 — so ~3.5/s is an upper bound.)
- *
+ * **§11.4 carries the arithmetic** for 1 rather than 0.5, off §6.6's measured 0.351 dB per tick.
  * **A single constant on purpose**: this is a judgement about how a number feels while it moves,
  * and 0.5 is one edit away if 1 dB reads blunt in the room.
  */
@@ -61,7 +55,7 @@ export const LIVE_STEP_DB = 1;
 const LIVE_DECIMALS = (String(LIVE_STEP_DB).split(".")[1] ?? "").length;
 
 /**
- * The **live** level as the screen shows it: [`db`]'s typographic minus, at [`LIVE_STEP_DB`].
+ * The **live** level as the screen shows it, at [`LIVE_STEP_DB`].
  *
  * The only place in the app that rounds a value, and it rounds for the eye and not for the
  * measurement — nothing downstream reads this string. `--` and the unit are untouched: they are
@@ -69,8 +63,7 @@ const LIVE_DECIMALS = (String(LIVE_STEP_DB).split(".")[1] ?? "").length;
  * replace it.
  */
 export function liveDb(value: number): string {
-  const stepped = Math.round(value / LIVE_STEP_DB) * LIVE_STEP_DB;
-  return stepped.toFixed(LIVE_DECIMALS).replace("-", "−");
+  return fixed(Math.round(value / LIVE_STEP_DB) * LIVE_STEP_DB, LIVE_DECIMALS);
 }
 
 /** Spec §11.3. Both dimensions, because §6.7 ties MAX's meaning to the same pair. */

@@ -11,7 +11,7 @@
 //     ┌──────────────────────────┐
 //  16k│ ░░  ░▒░   ░░░  ░▒▒░      │
 //   8k│ ░░  ░▒░   ░░░  ░▒▒░      │
-//    ⋮ │            ⋮             │
+//    ⋮│            ⋮             │
 //   63│██████████████████████████│
 // 31.5│██████████████████████████│
 //   16│██████████████████████████│
@@ -101,9 +101,10 @@ const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
  * their head. The old four are a subset of it, so nothing moved; nine were added between them.
  *
  * Values are §7.1's nominal centres and the band indices are the rows they name — band 0 is
- * 12.5 Hz at the bottom. **The bottom row is deliberately not labelled**: §13.12 says the four
- * rows under 31.5 Hz are narrower than one FFT bin, so 16 Hz is the lowest honest thing to name
- * and it is where the ladder starts anyway.
+ * 12.5 Hz at the bottom. **The bottom row is not labelled because the ladder starts at 16**, and
+ * for no better reason than that: §13.12 puts 12.5, 16, 20 *and* 25 Hz below one FFT bin at
+ * N=8192, so honesty about bin width would silence four rows rather than one and is not what
+ * picks the bottom label.
  */
 const FREQUENCIES: readonly (readonly [number, string])[] = [
   [31, "16k"],

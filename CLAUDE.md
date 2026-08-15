@@ -14,7 +14,7 @@ The capture spike is **gone**, deleted by `b01`, which replaced it with `session
 
 **The venue run (`b13`) is closed: the talk was read and the app worked.** So the map's destination is reached, and §13.14's legibility questions are all answered — ~6 px per band over 32 bands reads fine at arm's length **and in a dim room**, so the band count and the ~205 px height stand. **The app also has its first real calibration**, `+116.7 dB` against a reference meter; every offset before it was a guess, because there was no calibration tool at the desk.
 
-**Two tickets are open, and both are things the talk asked for rather than things it found broken.** [`b14` = #2](https://github.com/thezic/brus-spl/issues/2) — the live number is too busy at `S`, so §11.4's pre-authorised escape (per-quantity display resolution) gets taken. [`b15` = #3](https://github.com/thezic/brus-spl/issues/3) — the colour legend is removed on the owner's call and the plot reclaims its 58 px, plus denser frequency labels. **Both carry spec corrections** (§11.4 and §11.7, logged in §17); `b15`'s reverses §11.7's *"the legend stays"*. **Do not answer `b15`'s wish by adding bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would re-derive §7.1's `−90 … −30 dBFS` colour window, which `b13` just confirmed is correct.
+**Both of the talk's two asks are now built** — neither was a thing it found broken. [`b14` = #2](https://github.com/thezic/brus-spl/issues/2) took §11.4's pre-authorised escape: **display resolution is per quantity**, 1 dB on the live number and tenths kept on the L_eq and the max hold. `LIVE_STEP_DB` in `src/display.ts` is the one constant, chosen from §6.6's measured 0.351 dB per tick at `S` — it takes the hero from a digit change on *every* tick to ~3.5/s, where 0.5 dB would only reach ~7/s. [`b15` = #3](https://github.com/thezic/brus-spl/issues/3) removed the colour legend on the owner's call and gave the plot 56 of its 58 px, and the frequency axis now carries **the octave ladder, eleven labels where there were four**. **Both carried spec corrections** (§11.4 and §11.7, logged in §17); `b15`'s reverses §11.7's *"the legend stays"*. **Do not answer `b15`'s wish for a finer picture by adding bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would re-derive §7.1's `−90 … −30 dBFS` colour window, which `b13` just confirmed is correct. The map's own note stands: a **readout** on the picture is what "pinpoint problematic frequencies" actually wants, and it is new scope and a real decision — use the wider plot at one more talk first.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
@@ -153,8 +153,12 @@ The two communicate over Tauri commands: a `#[tauri::command]` fn registered in 
 `src/components/Spectrogram.vue` draws on **two canvases, and the split is load-bearing**: an
 offscreen `buckets × 32` canvas is the only thing ever appended to or scrolled, and the visible
 canvas gets one `drawImage` of it per changed tick with `imageSmoothingEnabled = false`. That is
-spec §7.3's *append and scroll, never redraw the history*, and it is why the chrome (frame, labels,
-legend, captions) is redrawn only when a labelled setting or the geometry changes.
+spec §7.3's *append and scroll, never redraw the history*, and it is why the chrome (frame, frequency
+labels, caption line) is redrawn only when a labelled setting or the geometry changes. **There is no
+colour legend** — `b15` removed it and the plot took all but 2 px of its 58 px gutter, so the only
+setting that still forces a chrome redraw is `unit`, which flips `dBFS/band` to `dB/band` at the
+first calibration. A ±0.1 dB trim now changes no pixel at all, which is why `offset_db` left
+`chromeKey`.
 
 Two ways to break it silently, both found by `b11`:
 

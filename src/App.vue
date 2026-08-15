@@ -87,11 +87,11 @@ onUnmounted(() => unlisten?.());
       </template>
     </section>
 
-    <!-- The picture, in the box `b06` reserved for it: ~205 px tall with all three gutters
-         budgeted — ~40 px left for frequency labels, ~20 px bottom for the time axis, 58 px
-         right for the colour legend (spec §11.7). It takes the whole tick rather than the meter,
-         because what it draws is `now_slot` and `columns`; the settings it takes are the span and
-         the legend's own label. -->
+    <!-- The picture, in the box `b06` reserved for it: ~205 px tall with both gutters budgeted —
+         ~40 px left for frequency labels and ~20 px bottom for the time axis and the caption line
+         (spec §11.7). There is no third: `b15` removed the colour legend and the plot took all but
+         2 px of its 58 px. It takes the whole tick rather than the meter, because what it draws is
+         `now_slot` and `columns`; the settings it takes are the span and the caption's unit. -->
     <div class="picture">
       <Spectrogram :tick="tick" :settings="settings" />
     </div>
