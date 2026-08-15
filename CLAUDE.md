@@ -18,6 +18,8 @@ The capture spike is **gone**, deleted by `b01`, which replaced it with `session
 
 **`b14` and `b15` closed without a device pass, but both were checked on glass afterwards, on 2026-08-15, and both stand.** So the two judgements that were open are answered: the hero's **500 ms** repaint interval (`LIVE_REFRESH_MS`; 300 ms was the alternative) and **eleven frequency labels** at ~17 px pitch (`FREQUENCIES` in `Spectrogram.vue` is the list to thin). Each is still a one-line edit if a room disagrees. The conditions of that check were not recorded, so **treat the dim-room-at-arm's-length read as still open** — it is the one `b13` gave the band count and the ~205 px height, and it is not the same test as a desk look. `b15` was otherwise verified by measurement in `b11`'s harness rather than by eye alone — ticks within 0.6 CSS px of their band centres, and the `copy`-composite scroll still intact.
 
+**The app was called `decibel-meter` through `b15`, and is `Brus` from [#4](https://github.com/thezic/brus-spl/issues/4) on** — `Brus` on screen, `brus` in the manifests, `brus_lib` as the crate, `net.thezic.brus` as the bundle identifier. The repo keeps its `brus-spl` name; the suffix is a GitHub-namespace concern only. **`.scratch/` and the closed bodies of `b01`–`b15` keep the old name on purpose**: they describe work that genuinely happened under it, and this line is the bridge rather than a rewrite of the record. The identifier change gave the app a fresh, empty container on the phone, so **the `+116.7 dB` calibration was carried across by hand** — iOS sandboxes containers per identifier, so no in-app migration was ever possible. The app icon is still stock Tauri; naming it was not the same job as drawing it.
+
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
 ## Agent skills
@@ -82,8 +84,8 @@ morning can embed a profile that dies tomorrow — the failure is silent until t
 launch. Read the expiry rather than assuming it:
 
 ```bash
-unzip -p src-tauri/gen/apple/build/arm64/decibel-meter.ipa \
-  "Payload/decibel-meter.app/embedded.mobileprovision" > /tmp/prov.plist
+unzip -p src-tauri/gen/apple/build/arm64/Brus.ipa \
+  "Payload/Brus.app/embedded.mobileprovision" > /tmp/prov.plist
 security cms -D -i /tmp/prov.plist | plutil -p - | grep -E "CreationDate|ExpirationDate"
 ```
 
@@ -92,21 +94,21 @@ To force a fresh one: move that profile out of the cache directory and rebuild �
 *certificate* is valid for a year, so this is never a certificate problem. A **new bundle identifier
 needs no forcing at all** — it misses the cache, so the build issues its own profile unprompted.
 
-Last known state, which decays on its own: a profile for `net.thezic.decibel-meter` was issued
-2026-08-15 08:52 UTC and expires **2026-08-22 08:52 UTC**. Read the expiry rather than trusting that
-sentence.
+The profile still cached from 2026-08-15 08:52 UTC belongs to the **old** identifier
+(`net.thezic.decibel-meter`) and died with it in `#4`. `net.thezic.brus` gets its own on its first
+build; read the expiry rather than assuming which one you have.
 
 **The stored calibration offset can be pulled off the phone and pushed back**, which is the real
 answer to spec §13.10:
 
 ```bash
 xcrun devicectl device copy from --device <udid> \
-  --domain-type appDataContainer --domain-identifier net.thezic.decibel-meter \
+  --domain-type appDataContainer --domain-identifier net.thezic.brus \
   --source "Library/Application Support" --destination ./backup     # `--source .` fails
 xcrun devicectl device copy to   --device <udid> \
-  --domain-type appDataContainer --domain-identifier net.thezic.decibel-meter \
-  --source ./backup/net.thezic.decibel-meter/settings.json \
-  --destination "Library/Application Support/net.thezic.decibel-meter/settings.json"
+  --domain-type appDataContainer --domain-identifier net.thezic.brus \
+  --source ./backup/net.thezic.brus/settings.json \
+  --destination "Library/Application Support/net.thezic.brus/settings.json"
 ```
 
 The app reads it at the next launch and prints what it loaded to stderr, so a restore is verifiable
@@ -141,7 +143,7 @@ regenerating; recover with `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx
 Two processes, one repo:
 
 - **Frontend** (`src/`) — Vue 3 SFCs with `<script setup>`, mounted in `src/main.ts`. TypeScript is `strict` with `noUnusedLocals`/`noUnusedParameters`, so unused bindings fail the build.
-- **Rust backend** (`src-tauri/src/`) — `main.rs` is a thin shim that calls `run()` in `lib.rs`; all setup belongs in `lib.rs` (the split exists so mobile targets can share the lib entry point). The crate is named `decibel_meter_lib`.
+- **Rust backend** (`src-tauri/src/`) — `main.rs` is a thin shim that calls `run()` in `lib.rs`; all setup belongs in `lib.rs` (the split exists so mobile targets can share the lib entry point). The crate is named `brus_lib`.
 
 The two communicate over Tauri commands: a `#[tauri::command]` fn registered in `tauri::generate_handler![]`, called from the frontend with `invoke("name", { args })` from `@tauri-apps/api/core`.
 

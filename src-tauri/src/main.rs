@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    decibel_meter_lib::run()
+    brus_lib::run()
 }
