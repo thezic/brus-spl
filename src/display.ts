@@ -10,7 +10,6 @@
 // rounded to 0.1 dB (spec §8.2, §9.1). `toFixed(1)` is a *formatter* here, not a rounder.
 
 import type { Settings, TimeWeighting } from "./bridge";
-import { WINDOW_HI_DBFS, WINDOW_LO_DBFS } from "./spectrogram";
 
 /** The sketch in spec §11 writes them out: `NOW · C · slow`, not `NOW · C · S`. */
 const WORD: Record<TimeWeighting, string> = { F: "fast", S: "slow" };
@@ -64,14 +63,17 @@ export function spanStart(settings: Settings): string {
 export const SPAN_END = "now";
 
 /**
- * The legend's caption: `dB/band` calibrated, `dBFS/band` uncalibrated.
+ * The picture's unit, on the caption line: `dB/band` calibrated, `dBFS/band` uncalibrated.
  *
  * **`/band` is not decoration.** An energy-summed row's level scales with its bandwidth, so a
  * colour means a level *per one-third-octave band* and nothing else — which is exactly what makes
  * the fixed 32-row layout part of the scale rather than a layout choice (spec §7.1).
  *
- * This is the string that sized the 58 px legend gutter: `dBFS/band` is four characters longer
- * than `dB/band`, and the uncalibrated state is the one the app starts life in.
+ * It was the legend's caption until `b15` removed the legend; it stays because it is now the
+ * **only** thing on screen saying what a colour is a quantity *of*, and it sits beside
+ * [`PICTURE_WEIGHTING`] where that sentence belongs. `dBFS/band` is four characters longer than
+ * `dB/band` and the uncalibrated state is the one the app starts life in, so it is the width the
+ * caption line has to be laid out for.
  */
 export function bandUnit(settings: Settings): string {
   return `${settings.unit}/band`;
@@ -89,29 +91,11 @@ export function bandUnit(settings: Settings): string {
  */
 export const PICTURE_WEIGHTING = "unweighted";
 
-/**
- * A legend end-label: the fixed dBFS colour window, **shifted by the calibration offset**.
- *
- * The one place in the frontend that touches the offset, and it is spec §7.1's arithmetic rather
- * than a hole in §8.2's *calibration lives in Rust*: band values cross the bridge raw, the colour
- * window is fixed in dBFS, and the offset moves the window and the values together — so every
- * colour is unchanged by calibrating and **only the legend relabels**. Doing it in Rust instead
- * would mean sending two numbers that are a constant apart from the offset already in the tick.
- *
- * Whole decibels: this labels a colour ramp, not a reading. The instrument's own numbers are
- * elsewhere on the screen at 0.1 dB.
- */
-export function legendLevel(dbfs: number, settings: Settings): string {
-  const value = dbfs + (settings.offset_db ?? 0);
-  return Math.round(value)
-    .toString()
-    .replace("-", "−");
-}
-
-/** The two ends of the legend, top first — [`WINDOW_HI_DBFS`] and [`WINDOW_LO_DBFS`] relabelled. */
-export function legendEnds(settings: Settings): [string, string] {
-  return [
-    legendLevel(WINDOW_HI_DBFS, settings),
-    legendLevel(WINDOW_LO_DBFS, settings),
-  ];
-}
+// **There is no legend, and so no `legendEnds`/`legendLevel` here** (`b15`, spec §11.7). The
+// colour bar and its two end-labels are removed on the owner's call — they delivered no value —
+// and with them goes the only place the frontend touched `offset_db`. §8.2's *calibration lives in
+// Rust* is now true without an exception: nothing on this side does dB arithmetic.
+//
+// §7.1 is unaffected in substance. The window is still fixed at `−90 … −30 dBFS` with no
+// auto-ranging, so the same colour still *is* the same absolute level — what is gone is the only
+// thing on screen that **named** those levels.

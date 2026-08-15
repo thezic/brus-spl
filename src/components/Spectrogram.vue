@@ -8,18 +8,20 @@
 // a passing door slam are indistinguishable on bars and unmistakable here.
 //
 // ```
-//    ┌──────────────────────┐ ┌─┐
-// 16k│ ░░  ░▒░   ░░░  ░▒▒░  │ │█│ 71
-//  1k│▓███▓████▒▓██▓░ ▒███▓ │ │▓│
-// 125│██████████████████████│ │▒│
-//  16│██████████████████████│ │░│ 11
-//    └──────────────────────┘ └─┘
-//     −60s · unweighted  now   dB/band
+//     ┌──────────────────────────┐
+//  16k│ ░░  ░▒░   ░░░  ░▒▒░      │
+//   8k│ ░░  ░▒░   ░░░  ░▒▒░      │
+//    ⋮ │            ⋮             │
+//   63│██████████████████████████│
+// 31.5│██████████████████████████│
+//   16│██████████████████████████│
+//     └──────────────────────────┘
+//      −60s · unweighted · dB/band  now
 // ```
 //
 // **Two canvases, and the split is the whole design.** The *data* canvas is `buckets × 32` — one
 // pixel per drawn column, one pixel per band — and is the only thing that is ever appended to or
-// scrolled. The *visible* canvas holds the chrome (frame, frequency labels, legend, captions) and
+// scrolled. The *visible* canvas holds the chrome (frame, frequency labels, caption line) and
 // gets one `drawImage` of the data canvas per changed tick, with smoothing off. That is spec
 // §7.3's *repaint by appending a column and scrolling, not by redrawing the history* — redrawing
 // everything costs ~8 ms per frame at 800 columns even in a desktop browser, which is wasteful in
@@ -42,7 +44,6 @@ import {
 } from "../bridge";
 import {
   bandUnit,
-  legendEnds,
   PICTURE_WEIGHTING,
   SPAN_END,
   spanStart,
@@ -53,28 +54,31 @@ import {
   decibels,
   paintColumn,
   power,
-  rampColour,
   slotsPerBucket,
 } from "../spectrogram";
 
 const props = defineProps<{
   /** The last tick. `now_slot` is what makes the right edge honest; `columns` is what is drawn. */
   tick: Tick | null;
-  /** The span, the legend's unit and the offset it is labelled with. `null` until the first tick. */
+  /** The span and the caption's unit — all the chrome reads. `null` until the first tick. */
   settings: Settings | null;
 }>();
 
 // ─── geometry, in CSS pixels (spec §11.7) ───────────────────────────────────────────────────
 //
-// **The three gutters are part of the design, not decoration.** 40 px left for the frequency
-// labels, 20 px bottom for the time axis and the two captions, and 58 px right for the colour
-// legend — 58 and not `07`'s ~52, because `dBFS/band` is four characters longer than `dB/band`
-// and at 52 px it overprinted the `now` label. **The legend stays**: it is what gives the picture
-// its absolute meaning, and it costs width rather than the vertical calm the layout is built on.
+// **Two gutters, not three** (`b15`). 40 px left for the frequency labels and 20 px bottom for the
+// time axis and the caption line. The 58 px right gutter held the colour legend and **the legend
+// is gone** — removed on the owner's call because it delivered no value, which is a different
+// argument from the space trade `09` d9 declined. The plot takes all but 2 px of that width, and
+// the 2 px are only so the frame's right stroke is never the canvas's last device-pixel column.
+//
+// §7.1 loses nothing in substance: the dB window is still fixed and nothing auto-ranges, so the
+// same colour still *is* the same absolute level. What is gone is the only thing on screen that
+// named those levels — which is why `dBFS/band` stays on the caption line below.
 
 const BOX_H = 205;
 const GUTTER_LEFT = 40;
-const GUTTER_RIGHT = 58;
+const GUTTER_RIGHT = 2;
 const AXIS_H = 20;
 const PLOT_H = BOX_H - AXIS_H;
 
@@ -83,15 +87,35 @@ const LABEL_PT = 10;
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 /**
- * The four rows that get a frequency label, top first — the sketch's own ladder.
+ * The rows that get a frequency label, top first — **the octave ladder**, every third band.
  *
- * Four, not eight: at ~5.8 px per band a fifth label is nearer its neighbour than a label is tall,
- * and the picture is read for *shape and steadiness* rather than for the level of one row.
+ * `b13` read the four-label axis as *not granular enough*, and eleven is the density the geometry
+ * actually affords: at ~5.7 px per band every third row is ~17 px apart, comfortably over the
+ * 10 px the label is tall, and the widest string (`31.5`, 24 px) clears the 33 px the gutter
+ * leaves to the left of the tick. Every *second* band would be 16 labels at ~11.4 px pitch —
+ * under 2 px of clear space between glyph boxes, which is not a thing to read in a dim room at
+ * arm's length, and it is a 2/3-octave series nobody thinks in.
+ *
+ * **Every third band is the octave ladder** — 16 · 31.5 · 63 · 125 · 250 · 500 · 1k · 2k · 4k ·
+ * 8k · 16k — so the density is not merely what fits, it is the series a reader already has in
+ * their head. The old four are a subset of it, so nothing moved; nine were added between them.
+ *
+ * Values are §7.1's nominal centres and the band indices are the rows they name — band 0 is
+ * 12.5 Hz at the bottom. **The bottom row is deliberately not labelled**: §13.12 says the four
+ * rows under 31.5 Hz are narrower than one FFT bin, so 16 Hz is the lowest honest thing to name
+ * and it is where the ladder starts anyway.
  */
 const FREQUENCIES: readonly (readonly [number, string])[] = [
   [31, "16k"],
+  [28, "8k"],
+  [25, "4k"],
+  [22, "2k"],
   [19, "1k"],
+  [16, "500"],
+  [13, "250"],
   [10, "125"],
+  [7, "63"],
+  [4, "31.5"],
   [1, "16"],
 ];
 
@@ -226,8 +250,8 @@ function configure(): boolean {
 }
 
 /**
- * The frame, the frequency labels, the legend and the caption line. Everything on the visible
- * canvas that is not the picture.
+ * The frame, the frequency labels and the caption line. Everything on the visible canvas that is
+ * not the picture.
  *
  * Redrawn only when the geometry or a labelled setting changes — it clears the whole canvas, so
  * every caller follows it with a [`blit`].
@@ -250,7 +274,11 @@ function drawChrome(): void {
   g.textBaseline = "middle";
 
   // Frequency labels, right-aligned into the left gutter against a tick on their own row. Band 0
-  // (12.5 Hz) is the bottom row, so the row's centre is measured from the top downwards.
+  // (12.5 Hz) is the bottom row, so the row's centre is measured from the top downwards. **Every
+  // label's y comes from its own band's centre** — the eleven of them are not laid out on an even
+  // ladder of their own that happens to look close, which is §7.3's *band edges are drawn crisp*
+  // carried into the axis. The tick rounds to the nearest device pixel because a 1 px line has to,
+  // and that is the only rounding in the path.
   g.textAlign = "right";
   g.fillStyle = palette.dim;
   for (const [band, name] of FREQUENCIES) {
@@ -267,45 +295,37 @@ function drawChrome(): void {
     g.fillRect(plotX - px(4), Math.round(centre), px(4), 1);
   }
 
-  // The legend: the ramp itself, one device-pixel row at a time, top = the loud end. Drawn from
-  // the same table the picture is, so a colour on the bar is the colour in the picture.
-  const legendX = plotX + plotW + px(9);
-  const legendW = px(10);
-  for (let row = 0; row < plotH; row++) {
-    g.fillStyle = rampColour(Math.round((1 - row / (plotH - 1)) * 255));
-    g.fillRect(legendX, plotY + row, legendW, 1);
-  }
+  // **No colour legend** (`b15`). Nothing is drawn to the right of the plot at all — the ramp
+  // strip and its two end-labels are gone, and the width they cost is in the picture instead.
 
+  // The caption line, and it is now **two anchors rather than three**. `−60s … now` carries the
+  // span a second time (spec §11.7); **`unweighted` is said out loud** because a reader comparing
+  // the picture band-by-band against a dB(A) number will otherwise conclude the app is
+  // inconsistent (spec §7.2); and `dBFS/band` stays because with the legend gone it is the only
+  // thing left saying what a colour is a quantity *of*.
+  //
+  // The three strings used to be anchored left / plot-right / canvas-right, and `now` had to be
+  // pulled 4 px inside the plot edge so it did not touch the legend caption. Both of those wanted
+  // the right-hand side and the plot now owns it, so the unit joins the left run — where §7.2's
+  // sentence and §7.1's unit read as one phrase — and `now` alone sits at the plot's right edge,
+  // which is where §7 puts the present.
+  //
+  // The uncalibrated run is the widest at ~175 px (`dBFS/band` is four characters longer than
+  // `dB/band`), which clears `now` with ~100 px to spare on the narrowest portrait phone and in
+  // the 800×600 wide reflow alike. It only closes up under a ~230 px canvas — a 667 px-wide
+  // landscape — which the three-anchor version had already run out of room in.
   const settings = props.settings;
-  g.textAlign = "left";
-  g.fillStyle = palette.dim;
-  if (settings) {
-    // **A fixed 60 dB window, shifted by the calibration offset** (spec §7.1) — so calibrating
-    // moves these two numbers and no pixel of the picture.
-    const [hi, lo] = legendEnds(settings);
-    g.fillText(hi, legendX + legendW + px(4), plotY + px(5));
-    g.fillText(lo, legendX + legendW + px(4), plotY + plotH - px(5));
-  }
-
-  // The caption line. `−60s … now` carries the span a second time (spec §11.7), and
-  // **`unweighted` is said out loud** because a reader comparing the picture band-by-band against
-  // a dB(A) number will otherwise conclude the app is inconsistent (spec §7.2). It sits on the
-  // same line as `dBFS/band` — the two together are the whole of what a colour means.
   const baseline = px(PLOT_H) + px(AXIS_H / 2) + 1;
+  g.textAlign = "left";
   g.fillStyle = palette.faint;
   if (settings) {
     g.fillText(
-      `${spanStart(settings)} · ${PICTURE_WEIGHTING}`,
+      `${spanStart(settings)} · ${PICTURE_WEIGHTING} · ${bandUnit(settings)}`,
       plotX,
       baseline,
     );
     g.textAlign = "right";
-    // `now` is pulled a few pixels inside the plot's right edge rather than flush with it: the
-    // legend caption is right-aligned to the canvas and `dBFS/band` is four characters longer than
-    // `dB/band`, which is what sized the gutter at 58 px in the first place. Flush, the two strings
-    // touch in the uncalibrated state — which is the state the app starts life in.
-    g.fillText(SPAN_END, plotX + plotW - px(4), baseline);
-    g.fillText(bandUnit(settings), canvas.width - px(2), baseline);
+    g.fillText(SPAN_END, plotX + plotW, baseline);
   }
 }
 
@@ -510,11 +530,15 @@ watch(
 /**
  * Only the values the chrome is drawn from, so the watcher below does not fire ten times a second
  * on a settings object the tick rebuilds each time.
+ *
+ * **`offset_db` left since `b15`.** It was here for the legend's two end-labels, which were the
+ * one thing on screen the offset moved; with the legend gone a ±0.1 dB trim changes no pixel of
+ * the chrome, and keeping it in the key would redraw and re-blit the whole canvas per tap for
+ * nothing. `unit` stays and is what still needs the redraw — it flips `dBFS/band` to `dB/band` the
+ * first time the app is calibrated.
  */
 function chromeKey(settings: Settings | null): string | null {
-  return settings
-    ? `${settings.window_s}|${settings.unit}|${settings.offset_db}`
-    : null;
+  return settings ? `${settings.window_s}|${settings.unit}` : null;
 }
 
 watch(
@@ -532,8 +556,8 @@ watch(
       if (configure()) void pull();
       return;
     }
-    // A calibration change reaches here and nothing else does: the legend relabels, the picture
-    // does not move (spec §9.5).
+    // The first calibration reaches here and nothing else does: the caption's unit relabels, the
+    // picture does not move (spec §9.5).
     drawChrome();
     blit();
   },
