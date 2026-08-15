@@ -992,8 +992,9 @@ category. Detail lives only in the log, which on a device means Xcode.
 | weighting change (C/A/Z) | — (the picture is unweighted, §7.2) |
 
 **The offset row is arithmetic, not an oversight.** §7.1 shifts the dB colour window *by the
-offset* and the band values shift with it, so every colour is unchanged — only the legend
-relabels. **Calibrating is the one settings act that changes every number on screen and no pixel
+offset* and the band values shift with it, so every colour is unchanged. It used to relabel the
+legend; since `b15` removed the legend (§11.7) it changes nothing in the picture at all, chrome
+included. **Calibrating is the one settings act that changes every number on screen and no pixel
 of the picture.**
 
 `get_spectrogram` is the only bulk payload: ≈138 KB at a 60 s span, ≈276 KB at 120 s, over the
@@ -1135,8 +1136,9 @@ dashes render as a pair of solid filled blocks (`09` f4). So:
   have been `--` only at zero coverage. **That state went from rare to common.**
 - **The primary number is sized for its widest state, not its most common one.** `−108.4` is wider
   than `66.7`, and **the uncalibrated state is the one the app starts life in** (`09` f6, d11).
-  Likewise the legend caption `dBFS/band` needs **58 px** where `07` budgeted ~52 and overprinted
-  the `now` label.
+  Likewise the picture's unit caption is laid out for `dBFS/band`, four characters longer than
+  `dB/band` — that width overprinted the `now` label at `07`'s ~52 px and is still what the
+  caption line is measured against now the legend it captioned is gone (§11.7).
 - Both `dB` and `dBFS` must look **deliberate**, not just the calibrated one.
 
 ### 11.6 The input-state line
@@ -1157,13 +1159,45 @@ Styled **in the same family as the unit label and the coverage figure, never as 
 
 ### 11.7 Geometry
 
-- **The spectrogram is ~205 px tall at full width with all three gutters**, sitting under the
-  number; its width is whatever is left. Gutters are part of the design, not decoration: **~40 px
-  left** for frequency labels, **~20 px bottom** for the time axis, **58 px right** for the colour
-  legend.
-- **The legend stays.** `07` offered the trade "if space forces the legend out, the picture loses
-  its absolute meaning"; **the trade is not taken** (`09` d9) — removing a tap toggle *freed* space,
-  and the legend costs width, not the vertical calm the layout is built on.
+- **The spectrogram is ~205 px tall at full width with two gutters**, sitting under the number; its
+  width is whatever is left. Gutters are part of the design, not decoration: **~40 px left** for
+  frequency labels and **~20 px bottom** for the time axis and the caption line. There is **no
+  right gutter** — 2 px, which is only enough that the frame's right stroke is never the canvas's
+  last device-pixel column.
+- **The legend is gone, and the plot has its 58 px** (`b15`). This reverses `09` d9's *"the legend
+  stays"*, and the reversal is legitimate because the argument is new. What `07` offered and `09`
+  declined was a **space** trade — *"if space forces the legend out, the picture loses its absolute
+  meaning"* — declined because space did not force it. The objection now is not about space: the
+  legend **delivers no value**, which was never argued either way. It is the owner's call and it is
+  not re-opened in code.
+  - **§7.1 is untouched in substance.** The dB window is still fixed at `−90 … −30 dBFS` with no
+    auto-ranging, so the same colour still *is* the same absolute level and a quiet room still
+    cannot look like a loud one. That property is now true of the **data** without being
+    **readable off the screen** — nothing on screen names those levels any more. That is the whole
+    of what removing the legend costs.
+  - **§7.2 survives intact, which is why it is cheap.** `unweighted` was put on the caption line
+    rather than on the legend (`b11`), so the guard against reading the picture band-by-band
+    against a dB(A) number keeps its place.
+  - **`dBFS/band` stays, and moves onto the left run of the caption line.** With no legend it is
+    the only thing left saying what a colour is a quantity *of*, and it now sits directly beside
+    `unweighted`, where §7.2's sentence and §7.1's unit read as one phrase. The caption line is
+    therefore **two anchors, not three** — `−60s · unweighted · dBFS/band` at the plot's left edge
+    and `now` at its right — which is what §7's *now at the right edge* wanted all along and could
+    not have while the legend caption owned the right-hand side.
+  - **The frontend no longer touches the calibration offset at all.** Relabelling the legend's two
+    ends was its only use, so §8.2's *calibration lives in Rust* now holds without an exception,
+    and an offset change moves no pixel of the picture **or** of its chrome.
+- **The frequency axis carries the octave ladder — eleven labels, every third band**: 16, 31.5,
+  63, 125, 250, 500, 1k, 2k, 4k, 8k, 16k (`b15`, answering `b13`'s *"isn't granular enough"*
+  against the previous four). Eleven is what the geometry affords and what a reader already thinks
+  in: at ~5.7 px per band every third row is ~17 px apart against a 10 px label, and the widest
+  string clears the 33 px the gutter leaves left of the tick. **Every second band is refused** —
+  16 labels at ~11.4 px pitch leaves under 2 px between glyph boxes, which is not legible in the
+  dim room at arm's length `b13` established as the real reading condition, and it is a
+  2/3-octave series nobody thinks in. Labels are §7.1's nominal centres and each sits on the row
+  it names; the bottom row is deliberately unlabelled, since §13.12 puts the four rows under
+  31.5 Hz below one FFT bin. **The band count is not what changed here** — see §7.1: energy-summed
+  rows scale with bandwidth, so finer bands would re-derive the colour window `b13` just confirmed.
 - **The window length is visible near the picture**, because §7.1 ties the span to it. `LCeq 60s`
   above and `−60s … now` below both carry it.
 - **Portrait is primary; one wide reflow serves both phone-landscape and the 800×600 dev window**,
@@ -1569,8 +1603,8 @@ list exists so a reader who goes back to a ticket is not misled.
 | §13.12's "the 12.5 Hz band is the one band the picture cannot honestly draw" | **Four rows are narrower than a bin, and which one *borrows* depends on the rate** (`b09`) — 20 Hz at 48 kHz, 12.5 Hz at 44.1 kHz. The substance stands; the borrow was never the reason. |
 | `06` d5's default list `(None, C, F, 60 s)` | **`(None, C, S, 60 s)`** — `09` d5 changed the default time weighting after `06` was written. |
 | `07` d8's "the picture is literally what is inside the number" | Read as **the same span, not the same data** (`08` d5) — Reset does not clear the picture. |
-| `07`'s ~52 px legend gutter | **58 px** (`09` f6) — `dBFS/band` is four characters longer than `dB/band` and overprinted the `now` label. |
-| `07`'s "if space forces the legend out" trade | **Not taken** (`09` d9) — the legend stays. |
+| `07`'s ~52 px legend gutter | **58 px** (`09` f6) — `dBFS/band` is four characters longer than `dB/band` and overprinted the `now` label. **Then none at all** (`b15`) — the legend went and the plot took the width; see the row below. |
+| `07`'s "if space forces the legend out" trade, and `09` d9's *"the legend stays"* | **Reversed: the legend is removed and the plot reclaims its 58 px** (`b15`, §11.7). Not a re-litigation — `09` declined a **space** trade, on the grounds that space did not force it; the owner's objection is that the legend **delivers no value**, which was never argued either way. §7.1's fixed window is untouched, so the same colour still *is* the same absolute level — that property is now true of the data without being readable off the screen, and naming those levels is the only thing lost. §7.2 is unharmed because `unweighted` was put on the caption line, not on the legend (`b11`). The freed width also pays for §11.7's denser frequency axis, eleven octave labels where there were four. |
 | `08` d9's "five types and eight commands" | **Seven commands** — its own contract block lists seven (§9.1). |
 | `09`'s own Question, "the rolling L_eq should dominate" | **Inverted** (`09` d2) — the hero is the live level, and §11.1 states the cost. |
 | `CLAUDE.md`'s note that `src-tauri/gen/` is generated | Already fixed: `gen/schemas` is off-limits, `gen/apple/` is tracked and editable but must stay regenerable. |

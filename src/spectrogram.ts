@@ -8,8 +8,8 @@
 //
 // **Nothing here applies the calibration offset.** Band values cross the bridge raw (spec §7.1),
 // and the colour window is fixed in dBFS, so the offset shifts the window and the values by the
-// same amount and every colour is unchanged. The one place the offset is visible is the legend's
-// *labels*, which is `display.ts`'s job, not this file's.
+// same amount and every colour is unchanged. Since `b15` removed the legend the offset is not
+// visible anywhere in the picture at all — calibrating relabels nothing here and moves no pixel.
 
 /** 32 fixed one-third-octave rows, mirroring `BANDS` in `src-tauri/src/spectrum.rs`. */
 export const BANDS = 32;
@@ -85,11 +85,10 @@ export function rampStep(dbfs: number): number {
   return Math.round(t * 255);
 }
 
-/** One ramp entry, as a CSS colour — for the legend's own strip, which is drawn in rects. */
-export function rampColour(step: number): string {
-  const at = step * 3;
-  return `rgb(${RAMP[at]}, ${RAMP[at + 1]}, ${RAMP[at + 2]})`;
-}
+// `rampColour` lived here to draw the legend's strip a rect at a time. **The legend is gone**
+// (`b15`, spec §11.7), so the ramp has exactly one consumer left — [`paintColumn`], which indexes
+// [`RAMP`] directly — and a CSS-colour accessor with no caller is how a reverted decision creeps
+// back in.
 
 /**
  * Writes one column of band levels into an RGBA buffer, **row 0 at the top of the image**.
