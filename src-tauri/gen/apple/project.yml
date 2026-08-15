@@ -1,6 +1,6 @@
-name: decibel-meter
+name: brus
 options:
-  bundleIdPrefix: net.thezic.decibel-meter
+  bundleIdPrefix: net.thezic.brus
   deploymentTarget:
     iOS: 14.0
 fileGroups: [../../src]
@@ -10,8 +10,8 @@ configs:
 settingGroups:
   app:
     base:
-      PRODUCT_NAME: decibel-meter
-      PRODUCT_BUNDLE_IDENTIFIER: net.thezic.decibel-meter
+      PRODUCT_NAME: Brus
+      PRODUCT_BUNDLE_IDENTIFIER: net.thezic.brus
       DEVELOPMENT_TEAM: QV7UX8JMYX
 targetTemplates:
   app:
@@ -25,20 +25,20 @@ targetTemplates:
     settings:
       groups: [app]
 targets:
-  decibel-meter_iOS:
+  brus_iOS:
     type: application
     platform: iOS
     sources:
       - path: Sources
       - path: Assets.xcassets
       - path: Externals
-      - path: decibel-meter_iOS
+      - path: brus_iOS
       - path: assets
         buildPhase: resources
         type: folder
       - path: LaunchScreen.storyboard
     info:
-      path: decibel-meter_iOS/Info.plist
+      path: brus_iOS/Info.plist
       properties:
         LSRequiresIPhoneOS: true
         UILaunchStoryboardName: LaunchScreen
@@ -55,7 +55,7 @@ targets:
         CFBundleShortVersionString: 0.1.0
         CFBundleVersion: "0.1.0"
     entitlements:
-      path: decibel-meter_iOS/decibel-meter_iOS.entitlements
+      path: brus_iOS/brus_iOS.entitlements
     scheme:
       environmentVariables:
         RUST_BACKTRACE: full

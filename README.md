@@ -1,7 +1,8 @@
-# Tauri + Vue + TypeScript
+# Brus
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+A sound pressure level meter for iOS: a live A/C/Z-weighted level, an L_eq over a rolling window, a
+max hold, and a third-octave spectrogram of the room — built to answer "is this too loud?" from the
+back of a venue.
 
-## Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+`CLAUDE.md` is the working guide: commands, the iOS signing and capture lore, and where the design
+reasoning lives.

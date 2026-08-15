@@ -1,0 +1,6 @@
+{
+  "weighting": "C",
+  "time_weighting": "S",
+  "window_s": 30,
+  "offset_db": 116.7
+}

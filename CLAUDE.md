@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A Tauri 2 + Vue 3 + TypeScript + Vite app. The planning effort is **closed**: its destination is `.scratch/spl-meter-mvp/spec.md`, which is now the authority for *what* to build. The reasoning behind every decision lives in that map's `issues/` and `research/`, two links away — the spec cites the ticket that made each call rather than reproducing the argument.
 
-**Open implementation work lives on GitHub Issues** — the map is [#1](https://github.com/thezic/brus-spl/issues/1) and the open tickets are its sub-issues. **Read that map issue before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. See `docs/agents/issue-tracker.md` for the mechanics.
+**Implementation work lives on GitHub Issues** — the map is [#1](https://github.com/thezic/brus-spl/issues/1) and tickets are its sub-issues. **Read that map issue before starting work.** Its tickets produce code, not decisions, and no decision in the spec gets re-litigated there. See `docs/agents/issue-tracker.md` for the mechanics. **There is nothing open right now**: the map is complete and every ticket `b01`–`b15` is closed, so new work starts by adding a ticket, not by picking one up.
 
 **`.scratch/spl-meter-build/` is the archive of the same effort** — `map.md` holds the Route, the Drop order and ~400 lines of Decisions-so-far, and `issues/b01`–`b13` are the closed tickets in full. Read it too: it is where the reasoning is, and the spec cites it by path. The two numbering schemes (`01`–`11` for the mvp map, `b01`–`b15` here) are deliberately distinct, and a third now exists — a bare `#N` means a GitHub issue, while `bNN` and `NN d<n>` mean **read the file**.
 
@@ -14,7 +14,11 @@ The capture spike is **gone**, deleted by `b01`, which replaced it with `session
 
 **The venue run (`b13`) is closed: the talk was read and the app worked.** So the map's destination is reached, and §13.14's legibility questions are all answered — ~6 px per band over 32 bands reads fine at arm's length **and in a dim room**, so the band count and the ~205 px height stand. **The app also has its first real calibration**, `+116.7 dB` against a reference meter; every offset before it was a guess, because there was no calibration tool at the desk.
 
-**Both of the talk's two asks are now built** — neither was a thing it found broken. [`b14` = #2](https://github.com/thezic/brus-spl/issues/2) calmed the live number, but **not the way §11.4's escape said to**. Coarsening it to 1 dB was built and reverted on the owner's call — *the decimal stays*. The busyness is a **repaint rate**, not a precision: §6.6's measured 0.351 dB per tick changes a digit on essentially every one of the ten ticks a second, so the hero now repaints at **2 Hz and keeps its tenth**. `LIVE_REFRESH_MS` in `src/components/Hero.vue` is the one constant. **Display resolution is 0.1 dB everywhere again**, so `display.ts` rounds nothing. Two things there are load-bearing: `--` is exempt from the throttle in both directions, because holding a stale number past §6.9's 200 ms threshold is exactly what that rule forbids; and this is **not** §6.10's publish rate — the tick stays at 10 Hz or coverage, Reset and max tracking all break. [`b15` = #3](https://github.com/thezic/brus-spl/issues/3) removed the colour legend on the owner's call and gave the plot 56 of its 58 px, and the frequency axis now carries **the octave ladder, eleven labels where there were four**. **Both carried spec corrections** (§11.4 and §11.7, logged in §17); `b15`'s reverses §11.7's *"the legend stays"*. **Do not answer `b15`'s wish for a finer picture by adding bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would re-derive §7.1's `−90 … −30 dBFS` colour window, which `b13` just confirmed is correct. The map's own note stands: a **readout** on the picture is what "pinpoint problematic frequencies" actually wants, and it is new scope and a real decision — use the wider plot at one more talk first.
+**Both of the talk's two asks are built and closed**, and neither was a thing it found broken. [`b14` = #2](https://github.com/thezic/brus-spl/issues/2) calmed the live number, but **not the way §11.4's escape said to**. Coarsening it to 1 dB was built and reverted on the owner's call — *the decimal stays*. The busyness is a **repaint rate**, not a precision: §6.6's measured 0.351 dB per tick changes a digit on essentially every one of the ten ticks a second, so the hero now repaints at **2 Hz and keeps its tenth**. `LIVE_REFRESH_MS` in `src/components/Hero.vue` is the one constant. **Display resolution is 0.1 dB everywhere again**, so `display.ts` rounds nothing. Two things there are load-bearing: `--` is exempt from the throttle in both directions, because holding a stale number past §6.9's 200 ms threshold is exactly what that rule forbids; and this is **not** §6.10's publish rate — the tick stays at 10 Hz or coverage, Reset and max tracking all break. [`b15` = #3](https://github.com/thezic/brus-spl/issues/3) removed the colour legend on the owner's call and gave the plot 56 of its 58 px, and the frequency axis now carries **the octave ladder, eleven labels where there were four**. **Both carried spec corrections** (§11.4 and §11.7, logged in §17); `b15`'s reverses §11.7's *"the legend stays"*. **Do not answer `b15`'s wish for a finer picture by adding bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would re-derive §7.1's `−90 … −30 dBFS` colour window, which `b13` just confirmed is correct. The map's own note stands: a **readout** on the picture is what "pinpoint problematic frequencies" actually wants, and it is new scope and a real decision — use the wider plot at one more talk first, and give it a planning map rather than a build ticket if the wish survives.
+
+**`b14` and `b15` closed without a device pass, but both were checked on glass afterwards, on 2026-08-15, and both stand.** So the two judgements that were open are answered: the hero's **500 ms** repaint interval (`LIVE_REFRESH_MS`; 300 ms was the alternative) and **eleven frequency labels** at ~17 px pitch (`FREQUENCIES` in `Spectrogram.vue` is the list to thin). Each is still a one-line edit if a room disagrees. The conditions of that check were not recorded, so **treat the dim-room-at-arm's-length read as still open** — it is the one `b13` gave the band count and the ~205 px height, and it is not the same test as a desk look. `b15` was otherwise verified by measurement in `b11`'s harness rather than by eye alone — ticks within 0.6 CSS px of their band centres, and the `copy`-composite scroll still intact.
+
+**The app was called `decibel-meter` through `b15`, and is `Brus` from [#4](https://github.com/thezic/brus-spl/issues/4) on** — `Brus` on screen, `brus` in the manifests, `brus_lib` as the crate, `net.thezic.brus` as the bundle identifier. The repo keeps its `brus-spl` name; the suffix is a GitHub-namespace concern only. **`.scratch/` and the closed bodies of `b01`–`b15` keep the old name on purpose**: they describe work that genuinely happened under it, and this line is the bridge rather than a rewrite of the record. The identifier change gave the app a fresh, empty container on the phone, so **the `+116.7 dB` calibration was carried across by hand** in `#4` — pulled from the old container, pushed into the new one, and confirmed on screen. iOS sandboxes containers per identifier, so no in-app migration was ever possible. The pulled file also held **`window_s: 30`, not the default 60**, which is why the checklist pulled the file rather than trusting the one number everybody remembered. The app icon is still stock Tauri; naming it was not the same job as drawing it.
 
 No linter or formatter is configured beyond `cargo clippy`/`cargo fmt`, and there is **no frontend test runner** — `b02` added `cargo test` with a `#[cfg(test)]` module, which needs no tooling decision. Ticket `10` closed the question deliberately: no frontend runner is added, and `src/bridge.ts` is the single accepted untested seam. Ask before adding one.
 
@@ -80,30 +84,43 @@ morning can embed a profile that dies tomorrow — the failure is silent until t
 launch. Read the expiry rather than assuming it:
 
 ```bash
-unzip -p src-tauri/gen/apple/build/arm64/decibel-meter.ipa \
-  "Payload/decibel-meter.app/embedded.mobileprovision" > /tmp/prov.plist
+unzip -p src-tauri/gen/apple/build/arm64/Brus.ipa \
+  "Payload/Brus.app/embedded.mobileprovision" > /tmp/prov.plist
 security cms -D -i /tmp/prov.plist | plutil -p - | grep -E "CreationDate|ExpirationDate"
 ```
 
 To force a fresh one: move that profile out of the cache directory and rebuild — Xcode issues a new
 7-day profile during the build, no prompt and no paid account (`b12`, 48 s end to end). The signing
-*certificate* is valid for a year, so this is never a certificate problem.
+*certificate* is valid for a year, so this is never a certificate problem. A **new bundle identifier
+needs no forcing at all** — it misses the cache, so the build issues its own profile unprompted.
+
+`#4` demonstrated the no-forcing case: the first build under `net.thezic.brus` issued its own profile
+unprompted, created 2026-08-15 11:58 UTC and expiring **2026-08-22 11:58 UTC**. The older profile in
+the cache belongs to `net.thezic.decibel-meter` and is dead weight. Read the expiry rather than
+assuming which one you have.
 
 **The stored calibration offset can be pulled off the phone and pushed back**, which is the real
 answer to spec §13.10:
 
 ```bash
 xcrun devicectl device copy from --device <udid> \
-  --domain-type appDataContainer --domain-identifier net.thezic.decibel-meter \
+  --domain-type appDataContainer --domain-identifier net.thezic.brus \
   --source "Library/Application Support" --destination ./backup     # `--source .` fails
 xcrun devicectl device copy to   --device <udid> \
-  --domain-type appDataContainer --domain-identifier net.thezic.decibel-meter \
-  --source ./backup/net.thezic.decibel-meter/settings.json \
-  --destination "Library/Application Support/net.thezic.decibel-meter/settings.json"
+  --domain-type appDataContainer --domain-identifier net.thezic.brus \
+  --source ./backup/net.thezic.brus/settings.json \
+  --destination "Library/Application Support/net.thezic.brus/settings.json"
 ```
 
 The app reads it at the next launch and prints what it loaded to stderr, so a restore is verifiable
-with `idevicesyslog -m "settings:"`.
+with `idevicesyslog -m "settings:"` — **over USB**. `#4` found the Wi-Fi case is not equivalent: with
+the phone paired over the network only, plain `idevicesyslog` answers `No device found` (it needs
+`-n -u <udid>`, and `idevice_id -l` is empty while `idevice_id -n` lists the phone), and even then
+**no `[stderr]` line from the app ever arrives** — the relay that carries them is the USB path. The
+process filter proves the app is alive (`idevicesyslog -n -u <udid> -p Brus` shows WebKit running the
+tick's JavaScript ~10×/s) but says nothing about what settings it loaded, and
+`devicectl … --console` carries no app output either. **So a settings read-back needs a cable**, and
+without one the only confirmation is the screen.
 
 **`devicectl device orientation` is simulator-only** — it answers `CoreDeviceError 1001` on a real
 phone, so a rotation/reflow test needs a hand on the device.
@@ -127,6 +144,16 @@ message never names the offending value). The same applies at *build* time: `ios
 `ios build` should also be run with it unset. Check with `echo $FORCE_COLOR` before
 regenerating; recover with `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx tauri ios init`.
 
+**A moved repo directory poisons `src-tauri/target`, and the failure blames something else.** The
+folder was renamed to `brus-spl` at some point while `target/` kept ~2000 absolute paths into the old
+one, and nothing noticed until `#4`'s package rename forced a fresh iOS *release* build. It fails
+with `failed to read plugin permissions: failed to read file
+'…/dev/mine/decibel-meter/src-tauri/target/aarch64-apple-ios/release/…/app_hide.toml': No such file
+or directory` — a path under a directory that no longer exists. It is **not** a permissions problem
+and **not** a `capabilities/default.json` problem, which is what the wording invites. Fix:
+`cargo clean --release --target aarch64-apple-ios`. Desktop and `cargo check` hide it, because those
+profiles had been rebuilt since the move and the iOS release artifacts had not.
+
 **`@tauri-apps/cli` is pinned to an exact version, not `^2`.** The iOS `Info.plist` merge order is undocumented and changed silently between tauri-cli 2.4 and 2.9, and a missing `NSMicrophoneUsageDescription` is a launch-time process kill rather than a build error. After bumping it — or after any `tauri ios build` — run `./scripts/check-ios-plist.sh` to assert the key survived the merge.
 
 ## Architecture
@@ -134,7 +161,7 @@ regenerating; recover with `rm -rf src-tauri/gen/apple && env -u FORCE_COLOR npx
 Two processes, one repo:
 
 - **Frontend** (`src/`) — Vue 3 SFCs with `<script setup>`, mounted in `src/main.ts`. TypeScript is `strict` with `noUnusedLocals`/`noUnusedParameters`, so unused bindings fail the build.
-- **Rust backend** (`src-tauri/src/`) — `main.rs` is a thin shim that calls `run()` in `lib.rs`; all setup belongs in `lib.rs` (the split exists so mobile targets can share the lib entry point). The crate is named `decibel_meter_lib`.
+- **Rust backend** (`src-tauri/src/`) — `main.rs` is a thin shim that calls `run()` in `lib.rs`; all setup belongs in `lib.rs` (the split exists so mobile targets can share the lib entry point). The crate is named `brus_lib`.
 
 The two communicate over Tauri commands: a `#[tauri::command]` fn registered in `tauri::generate_handler![]`, called from the frontend with `invoke("name", { args })` from `@tauri-apps/api/core`.
 

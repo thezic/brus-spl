@@ -1572,7 +1572,7 @@ mod tests {
         fn new() -> TempDir {
             static NEXT: AtomicU32 = AtomicU32::new(0);
             let dir = std::env::temp_dir().join(format!(
-                "decibel-meter-b05-{}-{}",
+                "brus-b05-{}-{}",
                 std::process::id(),
                 NEXT.fetch_add(1, Ordering::Relaxed)
             ));

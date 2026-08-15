@@ -15,10 +15,10 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
-               BlueprintIdentifier = "0326D7CAFE70B4DE787505B6"
-               BuildableName = "decibel-meter_iOS.app"
-               BlueprintName = "decibel-meter_iOS"
-               ReferencedContainer = "container:decibel-meter.xcodeproj">
+               BlueprintIdentifier = "A8A553E2B85BFD82B348C2BC"
+               BuildableName = "brus_iOS.app"
+               BlueprintName = "brus_iOS"
+               ReferencedContainer = "container:brus.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -32,10 +32,10 @@
       <MacroExpansion>
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0326D7CAFE70B4DE787505B6"
-            BuildableName = "decibel-meter_iOS.app"
-            BlueprintName = "decibel-meter_iOS"
-            ReferencedContainer = "container:decibel-meter.xcodeproj">
+            BlueprintIdentifier = "A8A553E2B85BFD82B348C2BC"
+            BuildableName = "brus_iOS.app"
+            BlueprintName = "brus_iOS"
+            ReferencedContainer = "container:brus.xcodeproj">
          </BuildableReference>
       </MacroExpansion>
       <Testables>
@@ -69,10 +69,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0326D7CAFE70B4DE787505B6"
-            BuildableName = "decibel-meter_iOS.app"
-            BlueprintName = "decibel-meter_iOS"
-            ReferencedContainer = "container:decibel-meter.xcodeproj">
+            BlueprintIdentifier = "A8A553E2B85BFD82B348C2BC"
+            BuildableName = "brus_iOS.app"
+            BlueprintName = "brus_iOS"
+            ReferencedContainer = "container:brus.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
@@ -100,10 +100,10 @@
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
-            BlueprintIdentifier = "0326D7CAFE70B4DE787505B6"
-            BuildableName = "decibel-meter_iOS.app"
-            BlueprintName = "decibel-meter_iOS"
-            ReferencedContainer = "container:decibel-meter.xcodeproj">
+            BlueprintIdentifier = "A8A553E2B85BFD82B348C2BC"
+            BuildableName = "brus_iOS.app"
+            BlueprintName = "brus_iOS"
+            ReferencedContainer = "container:brus.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
       <CommandLineArguments>
