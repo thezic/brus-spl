@@ -1,13 +1,13 @@
 # Uncomment the next line to define a global platform for your project
 
-target 'decibel-meter_iOS' do
+target 'brus_iOS' do
 platform :ios, '14.0'
-  # Pods for decibel-meter_iOS
+  # Pods for brus_iOS
 end
 
-target 'decibel-meter_macOS' do
+target 'brus_macOS' do
 platform :osx, '11.0'
-  # Pods for decibel-meter_macOS
+  # Pods for brus_macOS
 end
 
 # Delete the deployment target for iOS and macOS, causing it to be inherited from the Podfile
