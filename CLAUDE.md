@@ -21,6 +21,12 @@ map [#1](https://github.com/thezic/brus-spl/issues/1) and its tickets are closed
 a queue, and `#4` shows that new work need not hang off it at all. Tickets produce code, not
 decisions — nothing settled in the spec gets re-litigated on the tracker.
 
+**Planning maps live on the tracker now too.** [#7](https://github.com/thezic/brus-spl/issues/7)
+is the first, and it ran the whole `.scratch/` shape — a map, prototype and research tickets under
+it, and a spec correction at the end — without a directory. Its decisions are §7.4–§7.5 and its
+reasoning is in `#8`, `#9` and `#10`, which is where a *why* question goes. So `.scratch/` is the
+closed history and the tracker is where planning happens; the spec is still the authority for both.
+
 ### Settled, and easy to undo by accident
 
 Each of these was decided against an alternative that still looks reasonable from the code alone.
@@ -39,7 +45,24 @@ Each of these was decided against an alternative that still looks reasonable fro
   bands** — energy-summed rows scale with bandwidth, so finer bands shift every cell ~3 dB and would
   re-derive §7.1's `−90 … −30 dBFS` colour window that `b13` just confirmed. What "pinpoint
   problematic frequencies" actually wants is a **readout** on the picture: new scope and a real
-  decision, so give it a planning map rather than a build ticket.
+  decision, so give it a planning map rather than a build ticket. **That map is
+  [#7](https://github.com/thezic/brus-spl/issues/7) and it is settled** — spec §7.4–§7.5.
+- **The hero number and `--` deliberately have no defence against the picture behind them** (§7.4,
+  and §17 records it as a knowing exception to §11.5). Inferno runs to near-white, so both degrade
+  over a loud high band — the obvious "fix" is a scrim, and a scrim dims the top 48 % of the plot
+  whether the number needs it or not, which makes loud bands read as quieter and breaks §7.1's *the
+  same colour is the same absolute level*. If a room does disagree, the reversal is `outline`: it
+  costs no picture at all. Ask before painting anything over the plot.
+- **The marker snaps to the band, and there is no hit assist** (§7.5). Both look like missing
+  polish and are neither. An interpolated `3422 Hz` names a frequency 32 energy-summed rows cannot
+  distinguish — one pixel of finger movement is 37 Hz where the band spans 730. Assist would need
+  per-band history on the frontend, which §9.5 refuses, and it degrades silently when the history is
+  short. **Its level comes from Rust for the slot**, not from inverting the colour ramp: that is
+  what keeps §8.2 exception-free.
+- **Eleven frequency labels in expanded landscape is the rule working, not a bug.** Label density
+  derives from the height at a 14 px minimum pitch (§7.4), and landscape gives ~12.1 px per band —
+  so the orientation that was asked to be all picture carries no more names than the inline one.
+  Raising the threshold to "fix" it re-opens `b15`'s dim-room legibility call.
 - **The calibration offset is `+116.7 dB`**, the first real one — measured against a reference meter
   at the venue (`b13`), where every value before it was a guess. It lives in the phone's container,
   not the repo; the `devicectl` pull/push below is how it moves.
@@ -48,10 +71,11 @@ Each of these was decided against an alternative that still looks reasonable fro
   covered by `cargo test` (`b02`), which needed no tooling decision. Ask before adding one.
 
 Two constants are one-line judgement calls a room may disagree with, both checked on glass on
-2026-08-15: `LIVE_REFRESH_MS = 500` in `Hero.vue` (300 ms was the alternative) and the eleven-entry
-`FREQUENCIES` ladder in `Spectrogram.vue` (~17 px pitch, the list to thin). The conditions of that
-check went unrecorded, so **treat the dim-room-at-arm's-length read as still open** — a desk look is
-not the same test.
+2026-08-15: `LIVE_REFRESH_MS = 500` in `Hero.vue` (300 ms was the alternative) and the frequency
+ladder in `Spectrogram.vue` — which after #7 is a **14 px minimum pitch** rather than an
+eleven-entry list, though it still produces those eleven at 205 px. The conditions of that check
+went unrecorded, so **treat the dim-room-at-arm's-length read as still open** — a desk look is not
+the same test, and #7's own prototypes were judged on a desk too.
 
 ### The rename
 
@@ -248,10 +272,27 @@ Two ways to break it silently, both found by `b11`:
   pull answers from a snapshot taken before the round trip, so rebuilding from it alone drops a
   tick's worth of real columns into a one-slot hole that never heals.
 
-**To look at the picture with no hardware**: `git checkout prototype/b11-spectrogram-harness && npm
-run dev`, then `/harness.html` — it drives the real component with synthetic pink / sweep / gap /
-ramp columns and a faked `invoke`, in a browser. That is where §14.3's eyeball tests were run, and
-where §7.1's colour window should be re-judged if the venue run moves it.
+**To look at the picture with no hardware**: check out a harness branch and `npm run dev`, then
+`/harness.html` — it drives the real component with synthetic columns and a faked `invoke`, in a
+browser. That is where §14.3's eyeball tests were run, and where §7.1's colour window should be
+re-judged if the venue run moves it.
+
+**Use `prototype/07-harness`, not `prototype/b11-spectrogram-harness`.** The `b11` branch is the
+original and it is **20 commits stale** — it predates the rename to Brus, `b13`'s calibration,
+`b14`'s hero decimal and all of `b15`, so its `Spectrogram.vue` still has the colour legend and the
+four-label axis. Looking at it means judging a picture the app no longer draws. Its single commit
+has been replanted onto current `main` as `prototype/07-harness`; two further branches build on
+that one, and each carries a `findings-0N.md`:
+
+| Branch | What it drives | Source modes |
+|---|---|---|
+| `prototype/07-harness` | the current inline picture, `b11`'s harness as it was | pink · sweep · gap · ramp |
+| `prototype/09-expanded-layout` | §7.4's expanded view, with a level control and real phone frames | + a synthetic meter that wanders at §6.6's rate and goes `--` |
+| `prototype/08-marker` | §7.5's marker, every candidate on a switch | + `tones` — three narrow stripes, the only source with a real local maximum |
+
+**The source matters when comparing candidates.** `ramp` is strictly monotone, so anything that
+looks for a local maximum in it finds a constant offset rather than a feature — which is how the hit
+assist first read as *no difference at all*. `tones` is the one built to discriminate.
 
 ### Audio capture
 

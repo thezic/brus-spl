@@ -707,6 +707,96 @@ of one.
 - **No column is emitted until N samples have been buffered** (0.171 s at 48 kHz), so the first
   one or two slots after a start or a rebuild are holes.
 
+### 7.4 The expanded view
+
+**The picture at full screen, entered and left by a button** ([#9](https://github.com/thezic/brus-spl/issues/9),
+on map [#7](https://github.com/thezic/brus-spl/issues/7)). It exists because §7.5's readout needs a
+touch target: at the inline ~5.7 px per band a fingertip covers seven rows, and the honest answer to
+that is more pixels rather than a magnifier over a picture you could simply enlarge.
+
+- **Same span, more pixels.** §7.1's tie between the span and the L_eq window is untouched, and
+  nothing here pans back beyond it.
+- **Landscape is always expanded. Portrait remembers its own state**, and rotating back to portrait
+  restores what portrait was — so **rotation never changes which state you are in**. Not persisted:
+  the app launches inline, in portrait, whatever it was doing last.
+- **Entering and leaving are buttons, never a tap on the picture** — taps are the readout, and one
+  gesture cannot be both.
+- **What stays on screen**: the hero number overlaid on the plot, `LCeq` and `MAX` below it at
+  **×0.25 of the hero's size**, the input-state line, and close and `⋯` in the plot's corners.
+  **Coverage goes** — see §17, which records that as a knowing exception to §11.2.
+- **Chrome sits inside the plot's corners, not the screen's** (`overlay-plot`). The alternative put
+  the top-left button over the topmost frequency label and the bottom-right one over the `now`
+  caption; this covers data instead, which is recoverable by scrolling and a label is not. A third
+  candidate — a 44 px strip below the picture — was refused at ~12 % of a landscape picture's
+  height.
+- **Hero top-left, close top-right, `⋯` bottom-right.** The top is the quiet corner: 8–16 kHz are
+  the coldest rows in any real room, where the bottom is `b13`'s rumble stripe. `⋯` stays reachable
+  because Reset is a during-the-gig action and needing a rotation to reach it fails at the worst
+  moment.
+- **The hero number gets no treatment over the picture** — no outline, no plate, no scrim. Owner's
+  call; §17 records what it costs and why the alternatives were refused.
+- **The frequency gutter is kept in both orientations.** Landscape is the case that argues against
+  it — 40 px of a screen that was asked to be all picture — and it measured at 5.3 % of the
+  landscape width, against a plot that looks identical without it and names nothing. Its width is
+  **measured from the widest label actually in the ladder**, floored at 40 px, so nothing outside
+  the component may assume 40.
+- **Label density is derived from the height, not fixed.** Labels are placed at the densest step of
+  the octave ladder whose pitch clears **14 px**; axis labels stay at 10 px. That threshold is not
+  a fine judgement: `b15`'s evidence brackets it at (11.4, 17.2], and every current iPhone lands at
+  ≥19.5 px per band in expanded portrait and ≤12.1 in landscape, so any threshold in (12.1, 19.5]
+  produces the same ladder everywhere. It reproduces `b15`'s eleven inline by construction, gives
+  **all 32 bands a label in expanded portrait**, and — the result nobody predicts — **still eleven
+  in expanded landscape**, which carries no more names than the inline picture does.
+
+### 7.5 The marker and its readout
+
+**One marker, placed by dragging on the expanded picture, naming the band it sits on**
+([#8](https://github.com/thezic/brus-spl/issues/8), [#10](https://github.com/thezic/brus-spl/issues/10)).
+This graduates `b13`'s finding 3.3 — see §17.
+
+- **Anchored to the data, at a `(slot, band)`.** It drifts left as the picture scrolls, **vanishes
+  at the left edge** because the data it named is genuinely gone, and **survives re-pulls, rotation,
+  expanding and reopening**, because a slot's identity never moves.
+  - **It pins to the marked bucket's *middle* slot**, not its first. A first-slot anchor re-lands in
+    the earlier of two buckets whenever `slotsPer` halves, so the marker jumps a column for no
+    reason a reader could see.
+- **The label is static once placed.** Frequency is fixed by the row and level by the data point; it
+  never updates, it only drifts. The hero number already owns *now*.
+- **`drag` places and moves it** — the one gesture that shows where the marker will land before you
+  commit to it, which is also what removes the need for any hit assist to compensate for a fingertip.
+- **The row under the touch point, with no assist toward a local maximum.** Assist would need
+  per-band history on the frontend, which §9.5 refuses; it also degrades silently when the history
+  is short, so the same tap would behave differently depending on how long the app had been running.
+- **The label snaps to the band and spells the unit — `3.15 kHz`.** Not interpolated. At 20 px per
+  band one pixel of finger movement is 1.16 % of frequency — 37 Hz at 3.16 kHz — while the band
+  itself spans 730 Hz, so every digit of an interpolated `3422 Hz` but the leading one is a function
+  of where in the row you touched. Decibel X interpolates honestly because its axis is per-bin FFT;
+  32 energy-summed rows are not that axis. Showing both was refused as well: it is 74 % of the plot
+  width, and it contradicts itself outright the moment anything moves the marker off the touched row.
+- **The level sits on the same line as the frequency**, and comes from **Rust, for the slot** — a
+  command over `Spectrum::column(slot)`, not a colour read back off the canvas and not a ring on the
+  frontend. This is what keeps §8.2 (*calibration is applied post-log, in Rust*) exception-free and
+  §9.5 intact.
+  - **It reads in calibrated dB and must be visibly labelled per-band.** The loudest band measures
+    ~10.3 dB below broadband and the median ~15.5, so beside an 85 dB hero the readout shows ~75 at
+    best and 40–70 typically. Unlabelled, that reads as the hero being wrong. Raw `dBFS/band` was
+    refused for a sharper reason: `bandUnit()` already flips the caption to `dB/band` at the first
+    calibration, so a negative `dBFS` in the readout would contradict the caption directly below it.
+  - **An evicted slot and a gap are the same `None`** and must not be shown as the same thing —
+    *no data kept* and *silence* are different claims, and §6.9's refusal to publish a fake quiet
+    applies to a readout exactly as it applies to a number.
+- **The marker is the accent, `#5ac8fa`, with a full crosshair and no halo.** §11.8's rule that the
+  accent never means alarm is why it is available: a marker is an affordance, not a level. Red was
+  refused as an alarm colour on the one screen designed not to have one, and white loses against
+  inferno's near-white top.
+- **It is drawn on a DOM overlay, not on either canvas.** On the data canvas it would scroll and
+  smear under §7.3's `"copy"` composite; on the visible canvas the next blit would wipe it, so
+  keeping it would mean repainting per tick something that changes only when a finger moves. The
+  overlay's whole coupling to the picture is one geometry object — the plot rect and pixel budget in
+  CSS px — which is also what lets the gutter's width stop being a constant.
+- **The overlay covers the whole picture box and takes every pointer event over it**, so the corner
+  buttons must sit above it in z-order *and* stop propagation, or the readout swallows them.
+
 ---
 
 ## 8. Calibration
@@ -1217,6 +1307,11 @@ Styled **in the same family as the unit label and the coverage figure, never as 
   Reset below the fold (`09` f7). In the wide reflow the picture goes **beside** the number.
 - **The portrait layout is width-capped** — in a tall desktop window it centres at phone width
   rather than stretching a portrait stack across 1400 px.
+- **This is the inline geometry, and it is no longer the only one.** The picture also has an
+  **expanded state** at full screen, with its own chrome, its own label density and a gutter whose
+  width is measured rather than fixed — **§7.4**. The inline picture is otherwise untouched by it:
+  it gains an expand button and nothing else. The eleven-label ladder above is now the value the
+  density rule produces at 205 px, rather than a list.
 
 ### 11.8 Typography and colour
 
@@ -1545,6 +1640,17 @@ None block implementation. Listed so they are not mistaken for oversights.
   priority, but capture will break silently in a signed bundle if the entitlement is wrong.
 - **Logging and export** — deliberately out of scope, and the most probable *next* effort. If whoever
   imposed the dB(C) limit ever asks for evidence, this is what they want.
+- **What §7.5 deliberately left for later**, all recorded on map
+  [#7](https://github.com/thezic/brus-spl/issues/7): a **live marker** answering *"how is 3 kHz
+  doing right now"* as opposed to *"what was that stripe"*; **panning back beyond the span**, which
+  collides with §7.1's tie between the span and the L_eq window and so needs that tie examined
+  rather than a gesture designed; **more than one marker**, ruled to one because a second needs a
+  whole dismissal model; and **the marker under VoiceOver** — the picture is a single `role="img"`
+  with a static `aria-label`, so a touch readout is invisible to a screen reader and nothing here
+  covers it.
+- **The dismissal target.** §7.5's readout carries a `✕` that measured **12 px of glyph** in the
+  prototype — fine under a mouse, and not obviously a tap target. It is the only dismissal the
+  `drag` gesture has.
 
 ---
 
@@ -1620,6 +1726,10 @@ list exists so a reader who goes back to a ticket is not misled.
 | `CLAUDE.md`'s note that `src-tauri/gen/` is generated | Already fixed: `gen/schemas` is off-limits, `gen/apple/` is tracked and editable but must stay regenerable. |
 | `11` probe 2b's "the app dies" on backgrounding (§4.3) | **The process survives; the session is what stops** (`b08`) — same PID across 70 s backgrounded, `setActive` refused with `'!pla'` throughout, and recovery 3 s after returning to the foreground. Terminal before `b07`; self-healing after it. |
 | §2.2's "`println!` does not reach `devicectl … --console`", as read | True, but it was read as *on-device diagnostics must be on screen*. **`idevicesyslog` carries Rust's `eprintln!` verbatim, tagged `[stderr]`** (`b08`) — no Xcode, no throwaway readout. |
+| `b13` finding 3.3's **"deliberately not graduated yet"**, and its gate *"use it at one more talk first"* | **Graduated, and the gate waived** (map [#7](https://github.com/thezic/brus-spl/issues/7)) — on the owner's call, as a feature he wants independently of whether `b15`'s denser axis dissolved the need. 3.3 predicted the shape almost exactly, including that it deserved *"a short planning map of its own rather than a build ticket that decides it quietly"*, which is what #7 is. Its four named worries are all answered in §7.4–§7.5: freeze-or-live (neither — the marker pins to data and the label is static), the ~6 px touch target (the expanded view exists for it), snap-or-not (snap, §7.5), and does-it-survive-a-re-pull (yes, because a slot's identity never moves). |
+| §11.7's geometry, read as *the* geometry | **It is the inline geometry; §7.4 adds an expanded one** ([#9](https://github.com/thezic/brus-spl/issues/9)). Nothing in §11.7 changes for the inline picture. What stops being a constant is the **gutter width**, now measured from the widest label in the ladder and floored at 40 px, and the **eleven-label ladder**, now the output of a 14 px minimum-pitch rule rather than a list. Both reproduce §11.7's stated values at 205 px by construction. |
+| §11.2's *"the L_eq **with its coverage**… always visible"* | **Coverage is dropped in the expanded view** ([#9](https://github.com/thezic/brus-spl/issues/9)) — a knowing exception, not an oversight. `LCeq` and `MAX` stay, at ×0.25 of the hero. §11.2's actual argument was that the L_eq and the max are not desk curiosity (`09` d3), which is untouched; coverage was tied to the L_eq for §9.3's two-labelled-axes reading, and the expanded view has only one axis on it. |
+| §11.5's `--` as a typographic state, read as a legibility guarantee | **`--` gets no defence against the picture behind it** — owner's call, on being shown that §11.5's muted `#70707a` is correct against `#0a0a0c` and invisible against inferno's near-white `#fcffa4`. **The line still stays on screen** in the expanded view; what is waived is a treatment to keep it readable over a loud high band. The same waiver covers the hero number, which degrades the same way (§7.4). The alternatives were refused on their own merits: a gradient scrim dims the top 48 % of the plot whether the number needs it or not, so loud high bands read as quieter — against §7.1's *the same colour is the same absolute level* — and a plate takes its own rectangle of picture and does not give it back when the room is quiet. **`outline` costs no picture at all and remains the cheapest reversal** if a room disagrees. |
 | §11.4's pre-authorised escape, *"tenths on the L_eq and something coarser on the live value"* | **Taken, then reverted, and the diagnosis corrected** (`b14`). `b13`'s answer 2 fired the condition the escape was written for, so the live number was coarsened to 1 dB — and the owner's call on seeing it was *"it should still have its decimal."* The busyness is a **repaint rate**, not a precision: §6.6's 0.351 dB per tick changes a digit on essentially every one of ten ticks a second, so the hero now repaints at **2 Hz** and keeps its tenth. Resolution stays 0.1 dB everywhere. The escape was correctly pre-authorised and correctly triggered; what it named as the remedy was wrong. |
 
 ---
@@ -1633,6 +1743,7 @@ list exists so a reader who goes back to a ticket is not misled.
 | 5 | [`03`](issues/03-iec-weighting-filters.md) · [`04`](issues/04-weighting-architecture.md) · [`research/03`](research/03-iec-weighting-filters.md) |
 | 6 | [`05`](issues/05-level-metrics-pipeline.md) |
 | 7 | [`07`](issues/07-spectrogram-form.md) |
+| 7.4, 7.5 | [#7](https://github.com/thezic/brus-spl/issues/7) · [#8](https://github.com/thezic/brus-spl/issues/8) · [#9](https://github.com/thezic/brus-spl/issues/9) · [#10](https://github.com/thezic/brus-spl/issues/10) — the first sections written from the tracker rather than from `.scratch/` |
 | 8 | [`06`](issues/06-calibration-model.md) |
 | 9, 10 | [`08`](issues/08-rust-frontend-boundary.md) |
 | 11 | [`09`](issues/09-screen-layout.md) |
