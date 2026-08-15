@@ -1013,7 +1013,8 @@ commands and holds nothing.
 | Window length | 10 / 30 / 60 / 120 s | **60** | nothing (re-slice) |
 | Calibration offset | `Option<f64>` | **`None`** (uncalibrated) | nothing |
 
-Display resolution is **0.1 dB** and is **not** a setting — see §11.4.
+Display resolution is **per quantity** — 1 dB on the live number, 0.1 dB on the L_eq and the max
+hold — and is **not** a setting. See §11.4.
 
 **Persistence is one JSON file written from Rust** (`06` d5): `settings.json` in
 `app.path().app_config_dir()`. `serde` and `serde_json` are **already** dependencies and
@@ -1102,19 +1103,26 @@ number and the max hold**, because §6.7 ties the max's meaning to the same weig
 pair — so a bare `MAX 72.4 dB` never arises. The L_eq's own label carries the weighting and the
 window: `LCeq 60s` / `LAeq 30s` / `LZeq 120s`.
 
-### 11.4 Defaults: `C` / `S` / 60 s / 0.1 dB — and why S and 0.1
+### 11.4 Defaults: `C` / `S` / 60 s — and why S, and why the live number alone is coarse
 
 - **`S` is the default time weighting**, against `05` d7's recommendation of F-only. Reason in
   §6.6: at F the hero moves **1.72 dB per tick**, further than any rounding step, so display
   resolution barely helps (9.4 → 8.3 digit changes/s from 0.1 to 1 dB). **S is the lever;
-  resolution is not.**
-- **Display resolution stays 0.1 dB** for all three numbers. Coarsening to 0.5 dB was built and
-  **rejected**: resolution is one setting for all three numbers, and the L_eq is already perfectly
-  stable at 0.1 dB, so coarsening to calm the live number would **spend a tenth on the
-  ceiling-judged L_eq in order to fix a different number.** Tenths matter there.
-- **Per-quantity resolution was not taken** — tenths on the L_eq and something coarser on the live
-  value would calm the hero for free. Rejected as a second rule for a problem S already handles, but
-  it is the **escape** if the hero reads as too busy on real speech.
+  resolution is not** — which is why the escape below calms the hero at `S` and nothing calms it
+  at `F`.
+- **Display resolution is per quantity: 1 dB on the live number, 0.1 dB on the L_eq and the max
+  hold.** `b13`'s answer 2 is what changed it — the venue run found the hero *too busy* on real
+  speech at `S`, so the escape this section had already written down was taken (`b14`). At §6.6's
+  measured 0.351 dB per tick a tenths grid changes a digit on **every** tick, ~10/s; 1 dB takes
+  that to ~3.5/s while still leaving ~7 distinct readings across the 6.8 dB of range `S` covers.
+  0.5 dB was the alternative and only reaches ~7/s.
+- **Uniform coarsening stays rejected**, which is what makes this per-quantity rather than a
+  setting: the L_eq is already perfectly stable at 0.1 dB, so one resolution for all three numbers
+  would **spend a tenth on the ceiling-judged L_eq in order to fix a different number.** Tenths
+  matter there. Display resolution is still **not** a setting (§10) — it is two formatting rules,
+  and it lives in `display.ts`, not in the pipeline: the wire keeps 0.1 dB for every number (§9.1).
+- Coarsening the live value **does not license shrinking the hero.** §11.5's sizing bound is a
+  measurement of `−108.4`, and this ticket is about how the number moves, not how wide it is.
 
 ### 11.5 `--` and `dBFS` are typographic states, not merely strings
 
@@ -1568,6 +1576,7 @@ list exists so a reader who goes back to a ticket is not misled.
 | `CLAUDE.md`'s note that `src-tauri/gen/` is generated | Already fixed: `gen/schemas` is off-limits, `gen/apple/` is tracked and editable but must stay regenerable. |
 | `11` probe 2b's "the app dies" on backgrounding (§4.3) | **The process survives; the session is what stops** (`b08`) — same PID across 70 s backgrounded, `setActive` refused with `'!pla'` throughout, and recovery 3 s after returning to the foreground. Terminal before `b07`; self-healing after it. |
 | §2.2's "`println!` does not reach `devicectl … --console`", as read | True, but it was read as *on-device diagnostics must be on screen*. **`idevicesyslog` carries Rust's `eprintln!` verbatim, tagged `[stderr]`** (`b08`) — no Xcode, no throwaway readout. |
+| This spec's own §11.4, "display resolution stays 0.1 dB for all three numbers" and "per-quantity resolution was not taken" | **Taken** (`b14`) — `b13`'s answer 2 found the hero too busy on real speech at `S`, which is the exact condition §11.4 pre-authorised the escape on. The live number is now **1 dB**, the L_eq and max hold keep their tenths, and the wire keeps 0.1 dB for all three. Not a re-litigation: the section wrote the outcome down before it happened. |
 
 ---
 
