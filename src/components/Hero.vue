@@ -6,20 +6,70 @@
 // on the ticket and not hidden here: the number that dominates is not the number judged against
 // the 70 dB ceiling — which is why the L_eq sits beside it with its coverage, never behind a tap.
 //
-// **This number alone is coarser than the tenths it arrives in** — [`liveDb`](../display.ts), spec
-// §11.4, after `b13` found it too busy on real speech at `S`. Per-quantity, because the L_eq and
-// the max hold beside it keep their tenths off the same tick.
+// **This number alone repaints slower than it arrives** — see [`LIVE_REFRESH_MS`] below. It keeps
+// its tenth; what it does not keep is ten repaints a second (spec §11.4, `b13` finding 2).
+
+import { ref, watch } from "vue";
 
 import type { Unit } from "../bridge";
-import { liveDb } from "../display";
+import { db } from "../display";
 
-defineProps<{
+const props = defineProps<{
   /** `NOW · C · slow` — both dimensions, from [`heroLabel`](../display.ts). */
   label: string;
   /** `null` is `--`: the instrument reporting that it has nothing to say (spec §6.9). */
   value: number | null;
   unit: Unit;
 }>();
+
+/**
+ * How often the hero is allowed to **repaint**, in milliseconds — spec §11.4.
+ *
+ * `b13`'s venue run found the hero too busy on real speech at `S`, and the busyness is a *rate*:
+ * at §6.6's measured 0.351 dB per tick a tenths grid changes a digit on essentially every one of
+ * the ten ticks a second. `b14` first answered that by coarsening the number to whole decibels,
+ * which was reverted — a tenth is worth reading, and taking it away fixed the symptom by
+ * discarding the information. Repainting at 2 Hz calms the same number by a factor of five and
+ * costs nothing at all, because what is thrown away is a duplicate glance, not a digit.
+ *
+ * **This is not spec §6.10's publish rate and must never become it.** The tick stays at 10 Hz:
+ * coverage still climbs a second per second, Reset still lands immediately, and block-rate max
+ * tracking and the 200 ms threshold still get their drain. §6.10's own words are the licence —
+ * *the tick's timing affects only what is painted, never what is measured* — and this is one
+ * painted number downstream of an unchanged tick.
+ *
+ * A single constant on purpose, as `b14`'s step was: this is a judgement about how a number feels
+ * while it moves, and 300 ms is one edit away if 500 reads sluggish in the room.
+ */
+const LIVE_REFRESH_MS = 500;
+
+/** What is on screen, which lags [`props.value`] by at most [`LIVE_REFRESH_MS`]. */
+const shown = ref<number | null>(props.value);
+let painted = 0;
+
+watch(
+  () => props.value,
+  (value) => {
+    // **`--` is never throttled, in either direction.** Spec §6.9 makes the absent state the
+    // instrument reporting itself, and holding a number for 500 ms after the audio stopped is
+    // precisely the *frozen, stale with no tell* failure that the 200 ms threshold exists to
+    // prevent — a throttle that swallowed it would put a plausible wrong number on the hero for
+    // longer than the rule allows. The return from `--` is immediate for the mirrored reason:
+    // the instrument has something to say again and should say it.
+    if (value === null || shown.value === null) {
+      shown.value = value;
+      painted = performance.now();
+      return;
+    }
+
+    // Ticks arrive at 10 Hz, so the first one past the interval carries the repaint and no timer
+    // is needed — which also means a dead stream schedules nothing, it just goes `--` above.
+    const now = performance.now();
+    if (now - painted < LIVE_REFRESH_MS) return;
+    shown.value = value;
+    painted = now;
+  },
+);
 </script>
 
 <template>
@@ -30,7 +80,7 @@ defineProps<{
          became NOW (spec §11.5), so the state it replaces must not move the rest of the screen
          when it arrives and leaves. -->
     <p class="value">
-      <span v-if="value !== null" class="number">{{ liveDb(value) }}</span>
+      <span v-if="shown !== null" class="number">{{ db(shown) }}</span>
       <span v-else class="absent">--</span>
     </p>
 
@@ -75,10 +125,10 @@ defineProps<{
      7.5rem caps it once the layout's 26rem width cap takes over from the viewport. A flat rem
      value cannot do this: the size that fits a 375 px phone wastes 15 % of the glyph height on a
      430 px one, and the size that suits a 430 px one overflows the 375.
-     **`b14`'s coarsening does not license changing this.** It drops the widest string this
-     component can hold from `−108.4` to `−108`, and the size stays anyway: it is a measurement,
-     the layout is built on it — the wide reflow's column is sized from the same 371 px — and
-     `b14` is a fix for how a number *moves*, not for how much room it takes. */
+     **`b14` does not touch this**, and did not even while it briefly dropped the tenth: the size
+     is a measurement the layout is built on — the wide reflow's column is sized from the same
+     371 px — and `b14` is a fix for how often a number *repaints*, not for how much room it
+     takes. The tenth being back makes `−108.4` the widest string again, as measured. */
   font-size: min(7.5rem, calc(31vw - 12px));
   font-variant-numeric: tabular-nums;
   font-weight: 300;

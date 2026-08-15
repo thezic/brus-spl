@@ -6,13 +6,13 @@
 // file is what makes spec §11.3's rule — *one header serves the live number and the max hold* —
 // a single function rather than a convention two components have to keep.
 //
-// Nothing here calibrates or corrects: every dB value arrives already calibrated and already
+// Nothing here rounds, clamps or corrects: every dB value arrives already calibrated and already
 // rounded to 0.1 dB (spec §8.2, §9.1). `toFixed(1)` is a *formatter* here, not a rounder.
 //
-// The one exception is **display resolution**, which is formatting and so lives here rather than in
-// the metrics pipeline: [`liveDb`] shows the live number in coarser steps than the tenths it
-// arrives in (spec §11.4). The wire keeps its full precision either way, which is exactly what lets
-// the L_eq and the max hold stay at tenths off the same tick payload.
+// **Display resolution is 0.1 dB for all three numbers** and this file is where that is true
+// (spec §11.4). `b14` briefly coarsened the live number to 1 dB and it was reverted: the hero was
+// too busy because it *repaints* ten times a second, not because it carries a tenth, and the fix
+// belongs to the clock rather than to the string — see `LIVE_REFRESH_MS` in `Hero.vue`.
 
 import type { Settings, TimeWeighting } from "./bridge";
 
@@ -26,44 +26,11 @@ const WORD: Record<TimeWeighting, string> = { F: "fast", S: "slow" };
  * `font-variant-numeric: tabular-nums` where a hyphen does not — and the uncalibrated state is
  * the one the app starts life in (spec §11.5), where every hero number carries one.
  *
- * Every number on screen goes through here, which is what keeps that one rule in one place.
+ * Every number on screen goes through here — the live level, the L_eq, the max hold and the
+ * calibration slice, all at the 0.1 dB the wire carries.
  */
-function fixed(value: number, decimals: number): string {
-  return value.toFixed(decimals).replace("-", "−");
-}
-
-/** A dB value at the 0.1 dB the wire carries — the L_eq, the max hold and the calibration slice. */
 export function db(value: number): string {
-  return fixed(value, 1);
-}
-
-/**
- * The live number's display step, in decibels — **the live number's alone** (spec §11.4).
- *
- * The escape §11.4 pre-authorised, taken because `b13`'s venue run answered *"does the hero feel
- * right on real speech at S?"* with **no, it is too busy** (`b14`). Not a setting and not a general
- * coarsening: the L_eq is judged against a ceiling and is already perfectly stable at tenths, so
- * spending a tenth there to calm a different number was rejected and stays rejected.
- *
- * **§11.4 carries the arithmetic** for 1 rather than 0.5, off §6.6's measured 0.351 dB per tick.
- * **A single constant on purpose**: this is a judgement about how a number feels while it moves,
- * and 0.5 is one edit away if 1 dB reads blunt in the room.
- */
-export const LIVE_STEP_DB = 1;
-
-/** As many decimals as the step is written with — `1` → none, `0.5` → one. */
-const LIVE_DECIMALS = (String(LIVE_STEP_DB).split(".")[1] ?? "").length;
-
-/**
- * The **live** level as the screen shows it, at [`LIVE_STEP_DB`].
- *
- * The only place in the app that rounds a value, and it rounds for the eye and not for the
- * measurement — nothing downstream reads this string. `--` and the unit are untouched: they are
- * typographic states (spec §11.5), and coarsening a number says nothing about the states that
- * replace it.
- */
-export function liveDb(value: number): string {
-  return fixed(Math.round(value / LIVE_STEP_DB) * LIVE_STEP_DB, LIVE_DECIMALS);
+  return value.toFixed(1).replace("-", "−");
 }
 
 /** Spec §11.3. Both dimensions, because §6.7 ties MAX's meaning to the same pair. */
