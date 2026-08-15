@@ -113,7 +113,14 @@ xcrun devicectl device copy to   --device <udid> \
 ```
 
 The app reads it at the next launch and prints what it loaded to stderr, so a restore is verifiable
-with `idevicesyslog -m "settings:"`.
+with `idevicesyslog -m "settings:"` — **over USB**. `#4` found the Wi-Fi case is not equivalent: with
+the phone paired over the network only, plain `idevicesyslog` answers `No device found` (it needs
+`-n -u <udid>`, and `idevice_id -l` is empty while `idevice_id -n` lists the phone), and even then
+**no `[stderr]` line from the app ever arrives** — the relay that carries them is the USB path. The
+process filter proves the app is alive (`idevicesyslog -n -u <udid> -p Brus` shows WebKit running the
+tick's JavaScript ~10×/s) but says nothing about what settings it loaded, and
+`devicectl … --console` carries no app output either. **So a settings read-back needs a cable**, and
+without one the only confirmation is the screen.
 
 **`devicectl device orientation` is simulator-only** — it answers `CoreDeviceError 1001` on a real
 phone, so a rotation/reflow test needs a hand on the device.
