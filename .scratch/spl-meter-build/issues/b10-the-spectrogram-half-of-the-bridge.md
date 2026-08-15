@@ -8,9 +8,9 @@ Blocked by: [`b09`](b09-spectrum-analysis-and-the-column-ring.md)
 ## Build
 
 Fill in `columns`, add the seventh command, and wire the re-pull rules. Spec
-[§9.1](../../spl-meter-mvp/spec.md#91-the-wire-contract-verbatim),
-[§9.2](../../spl-meter-mvp/spec.md#92-properties-worth-stating-rather-than-leaving-to-be-inferred)
-and [§9.5](../../spl-meter-mvp/spec.md#95-what-makes-the-frontend-re-pull).
+[§9.1](../../../docs/spec.md#91-the-wire-contract-verbatim),
+[§9.2](../../../docs/spec.md#92-properties-worth-stating-rather-than-leaving-to-be-inferred)
+and [§9.5](../../../docs/spec.md#95-what-makes-the-frontend-re-pull).
 
 Small ticket. Two pieces:
 

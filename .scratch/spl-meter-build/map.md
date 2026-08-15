@@ -31,7 +31,7 @@ countdown in a document is worse than no countdown, because it gets quoted back 
 commitment. **What survives is the priority order, which is the part that was ever useful.**
 
 The authority for *what* to build is
-[`spl-meter-mvp/spec.md`](../spl-meter-mvp/spec.md), the destination of
+[`docs/spec.md`](../../docs/spec.md), the destination of
 [the closed `spl-meter-mvp` map](../spl-meter-mvp/map.md). **No decision in the spec gets
 re-litigated here** — tickets cite section numbers (`§6.3`) and the spec cites the mvp ticket
 that made the call (`05 d2`), so the reasoning is two links away and never restated.
@@ -591,7 +591,7 @@ difference matter (spec §7).
 ## Not yet specified
 
 Everything here is **in scope and unanswerable until the app exists**. Most of it is spec
-[§13.14](../spl-meter-mvp/spec.md#1314-untested-and-known-to-be-so), whose whole content is
+[§13.14](../../docs/spec.md#1314-untested-and-known-to-be-so), whose whole content is
 "never tested, and we know it".
 
 **[The venue run](issues/b13-the-venue-run.md) cleared most of this section**, which is what it was
@@ -652,7 +652,7 @@ for. What it cleared is struck through; what it did not is unchanged below.
   air** on the desk and can only be longer on the phone, so a recovery *will* cross the threshold.
   That is not an argument for moving it — the audio genuinely stopped — but it does mean the phone
   will show `--` on every recovery, which the device pass should expect rather than diagnose.
-- **Whether spec [§16](../spl-meter-mvp/spec.md#16-what-this-spec-decides-that-no-ticket-decided)'s
+- **Whether spec [§16](../../docs/spec.md#16-what-this-spec-decides-that-no-ticket-decided)'s
   eleven choices survive contact with code.** `realfft`, `rtrb`, the FFT power normalisation
   and eight smaller calls were made by the spec rather than by any ticket, and listed there
   expressly so they could be vetoed in review rather than discovered in code. A ticket that

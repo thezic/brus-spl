@@ -29,7 +29,7 @@ which exists only to prove the architecture is viable.
 
 > **✅ Done — 2026-08-05.**
 >
-> **The spec is written and approved: [`spec.md`](spec.md).** Every ticket on this map is
+> **The spec is written and approved: [`spec.md`](../../docs/spec.md).** Every ticket on this map is
 > resolved, and the destination exists. Implementation runs as a separate effort and should
 > start from the spec, not from this map — the map's value now is the *reasoning* behind each
 > decision, which the spec cites but does not reproduce.
@@ -42,14 +42,14 @@ which exists only to prove the architecture is viable.
 > `01`–`11`.
 >
 > Four things the spec deliberately leaves open, none of them blocking: its
-> [§15](spec.md#15-open-questions-this-spec-does-not-close). The cheapest and most useful is
+> [§15](../../docs/spec.md#15-open-questions-this-spec-does-not-close). The cheapest and most useful is
 > **whether ~6 px per band reads at arm's length in a dim venue** — the build is already on the
 > phone.
 >
 > **The capture spike is still in the tree and is now due for deletion** (`spike.rs`,
 > `bin/spike.rs`, the `run_capture_spike` command, `App.vue`'s harness). Left in deliberately:
 > removing the harness means writing what replaces it, which belongs to the implementation
-> effort. Spec [§12](spec.md#12-suggested-module-layout) lists what goes and what must survive.
+> effort. Spec [§12](../../docs/spec.md#12-suggested-module-layout) lists what goes and what must survive.
 
 ## Notes
 
@@ -237,7 +237,7 @@ mechanics.
   networking, unlike the Safari route that blocked `07`.
 
 - [Write the spec](issues/10-write-the-spec.md)
-  — **[`spec.md`](spec.md) is written and approved, with no notes.** 18 sections, and every decision
+  — **[`spec.md`](../../docs/spec.md) is written and approved, with no notes.** 18 sections, and every decision
   cites the ticket that made it, so the spec is a destination rather than a replacement for the
   reasoning. Assembling it was not pure transcription: putting ten resolved tickets side by side
   surfaced **two stale texts and a miscount** (`06` d5 still lists `F` as the persisted default time
@@ -252,8 +252,8 @@ mechanics.
   dBFS while measuring through a normalisation it never wrote down. The one chosen makes a full-scale
   sine read −3.01 dBFS in its band, the same convention as the meter, which is what lets one
   calibration offset shift both the numbers and the picture. All eleven such choices are listed for
-  veto in [§16](spec.md#16-what-this-spec-decides-that-no-ticket-decided) and all twelve carried
-  corrections in [§17](spec.md#17-corrections-this-spec-carries).
+  veto in [§16](../../docs/spec.md#16-what-this-spec-decides-that-no-ticket-decided) and all twelve carried
+  corrections in [§17](../../docs/spec.md#17-corrections-this-spec-carries).
 
 ## Requirements discovered while charting the terrain
 
@@ -282,8 +282,8 @@ Not decisions and not fog — things the MVP must do that no ticket asked for, s
 ## Not yet specified
 
 **Everything still open below is carried into the spec's
-[§15](spec.md#15-open-questions-this-spec-does-not-close) and its
-[§13.14](spec.md#1314-untested-and-known-to-be-so), so none of it is lost by the map closing.
+[§15](../../docs/spec.md#15-open-questions-this-spec-does-not-close) and its
+[§13.14](../../docs/spec.md#1314-untested-and-known-to-be-so), so none of it is lost by the map closing.
 Nothing here blocks implementation.**
 
 - **Desktop dev-loop fidelity** — how to test the meter with reproducible signals when
@@ -299,7 +299,7 @@ Nothing here blocks implementation.**
   prototype: **pink noise must draw flat** (it is equal energy per third-octave by definition, so a
   sloped picture means the band summarisation is wrong), and an **exponential sweep must draw a
   straight diagonal** (a curve means the log axis mapping is wrong). Neither needs hardware.
-  **`10` writes the whole thing down as spec [§14](spec.md#14-validation-and-tests)**, DSP half and
+  **`10` writes the whole thing down as spec [§14](../../docs/spec.md#14-validation-and-tests)**, DSP half and
   display half together, so what is left of this entry is only the *acoustic* end — and that is a
   calibration limitation (spec §13.6) rather than an unspecified piece of the dev loop.
 - ~~**Whether the input path is linear, which decides if a single calibration offset is valid at
@@ -336,7 +336,7 @@ Nothing here blocks implementation.**
   on the resist-complexity bar, with `ts-rs` named as the escape if the contract grows.
   **Closed by `10`: no runner is added at all.** The frontend half is settled the same way `08`
   narrowed it — nothing so far requires one, so none is added and `src/bridge.ts` stays the single
-  accepted untested seam. Spec [§14](spec.md#14-validation-and-tests) writes the whole test plan
+  accepted untested seam. Spec [§14](../../docs/spec.md#14-validation-and-tests) writes the whole test plan
   instead: the 34-frequency table with its two assertion levels and its two false-failure traps
   (exact frequencies, not nominal; discard ≥2 s of transient), the two design invariants worth tight
   tolerances, the metrics-pipeline cases including *every row* of the reset/clear table, and `07`'s

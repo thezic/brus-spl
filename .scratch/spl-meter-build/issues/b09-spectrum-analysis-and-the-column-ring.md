@@ -8,8 +8,8 @@ Blocked by: [`b08`](b08-tier-1-device-pass.md)
 ## Build
 
 `spectrum.rs`: FFT frame assembly, third-octave banding, and the column ring. Spec
-[§7.1](../../spl-meter-mvp/spec.md#71-parameters) and
-[§16](../../spl-meter-mvp/spec.md#16-what-this-spec-decides-that-no-ticket-decided) items 1, 4
+[§7.1](../../../docs/spec.md#71-parameters) and
+[§16](../../../docs/spec.md#16-what-this-spec-decides-that-no-ticket-decided) items 1, 4
 and 5.
 
 **Tier 2 starts here, and the map says outright that Tier 2 is what gets dropped.** Read the

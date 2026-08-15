@@ -1,10 +1,10 @@
 # SPL Meter MVP — specification
 
 Status: **approved, with no notes** (2026-08-05) · Assembled by ticket
-[`10`](issues/10-write-the-spec.md) from every resolved ticket on
-[the map](map.md)
+[`10`](../.scratch/spl-meter-mvp/issues/10-write-the-spec.md) from every resolved ticket on
+[the map](../.scratch/spl-meter-mvp/map.md)
 
-**Being built by the [`spl-meter-build` map](../spl-meter-build/map.md).** This spec is that
+**Being built by the [`spl-meter-build` map](../.scratch/spl-meter-build/map.md).** This spec is that
 map's authority: its tickets cite section numbers here rather than re-arguing anything. If a
 section turns out to be wrong, the correction belongs in a build ticket's resolution and then
 here — not in the code alone.
@@ -310,7 +310,7 @@ independent and preserves the unweighted display section [7](#7-spectrogram) req
 
 ### 5.3 The filters
 
-Sources and the full derivation: [`research/03-iec-weighting-filters.md`](research/03-iec-weighting-filters.md),
+Sources and the full derivation: [`research/03-iec-weighting-filters.md`](../.scratch/spl-meter-mvp/research/03-iec-weighting-filters.md),
 from IS 15575-1:2005 (the Bureau of Indian Standards adoption declared identical with
 IEC 61672-1:2002, published free), corroborated against three reference implementations.
 
@@ -1553,7 +1553,7 @@ a test, and it is a pure Rust test: `cargo test` plus a `#[cfg(test)]` module ad
 config and no tooling decision**, so `CLAUDE.md`'s "ask before adding a test runner" does not apply
 (`04`).
 
-The table is [`research/03-iec-weighting-filters.md`](research/03-iec-weighting-filters.md) §4.2 —
+The table is [`research/03-iec-weighting-filters.md`](../.scratch/spl-meter-mvp/research/03-iec-weighting-filters.md) §4.2 —
 34 rows × A/C with exact frequencies, analogue design-goal values, published table values, class-1 /
 design-band / class-2 tolerances, and measured bilinear deviations at 44.1 and 48 kHz.
 
@@ -1738,13 +1738,13 @@ list exists so a reader who goes back to a ticket is not misled.
 
 | Section | From |
 |---|---|
-| 2, 3 | [`01`](issues/01-native-audio-capture-path.md) · [`02`](issues/02-ios-capture-device-spike.md) · [`research/01`](research/01-native-audio-capture-path.md) |
-| 4 | [`11`](issues/11-interruption-and-gap-handling.md) |
-| 5 | [`03`](issues/03-iec-weighting-filters.md) · [`04`](issues/04-weighting-architecture.md) · [`research/03`](research/03-iec-weighting-filters.md) |
-| 6 | [`05`](issues/05-level-metrics-pipeline.md) |
-| 7 | [`07`](issues/07-spectrogram-form.md) |
+| 2, 3 | [`01`](../.scratch/spl-meter-mvp/issues/01-native-audio-capture-path.md) · [`02`](../.scratch/spl-meter-mvp/issues/02-ios-capture-device-spike.md) · [`research/01`](../.scratch/spl-meter-mvp/research/01-native-audio-capture-path.md) |
+| 4 | [`11`](../.scratch/spl-meter-mvp/issues/11-interruption-and-gap-handling.md) |
+| 5 | [`03`](../.scratch/spl-meter-mvp/issues/03-iec-weighting-filters.md) · [`04`](../.scratch/spl-meter-mvp/issues/04-weighting-architecture.md) · [`research/03`](../.scratch/spl-meter-mvp/research/03-iec-weighting-filters.md) |
+| 6 | [`05`](../.scratch/spl-meter-mvp/issues/05-level-metrics-pipeline.md) |
+| 7 | [`07`](../.scratch/spl-meter-mvp/issues/07-spectrogram-form.md) |
 | 7.4, 7.5 | [#7](https://github.com/thezic/brus-spl/issues/7) · [#8](https://github.com/thezic/brus-spl/issues/8) · [#9](https://github.com/thezic/brus-spl/issues/9) · [#10](https://github.com/thezic/brus-spl/issues/10) — the first sections written from the tracker rather than from `.scratch/` |
-| 8 | [`06`](issues/06-calibration-model.md) |
-| 9, 10 | [`08`](issues/08-rust-frontend-boundary.md) |
-| 11 | [`09`](issues/09-screen-layout.md) |
+| 8 | [`06`](../.scratch/spl-meter-mvp/issues/06-calibration-model.md) |
+| 9, 10 | [`08`](../.scratch/spl-meter-mvp/issues/08-rust-frontend-boundary.md) |
+| 11 | [`09`](../.scratch/spl-meter-mvp/issues/09-screen-layout.md) |
 | 13 | all of them |

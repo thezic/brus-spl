@@ -8,8 +8,8 @@ Blocked by: [`b03`](b03-the-metrics-pipeline.md)
 ## Build
 
 `settings.rs`: the four settings, their JSON file, and the calibration arithmetic. Spec
-[§8](../../spl-meter-mvp/spec.md#8-calibration) and
-[§10](../../spl-meter-mvp/spec.md#10-settings-and-persistence). The *surface* for all of this
+[§8](../../../docs/spec.md#8-calibration) and
+[§10](../../../docs/spec.md#10-settings-and-persistence). The *surface* for all of this
 is [The screen](b06-the-screen.md); this ticket is the machinery behind it.
 
 **Four settings, all Rust-owned.** The frontend issues commands and holds nothing.

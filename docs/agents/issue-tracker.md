@@ -37,8 +37,13 @@ Run `gh issue view <number> --comments`.
 ## The closed history lives in `.scratch/`
 
 `b01`–`b13` and the whole closed `spl-meter-mvp` effort remain markdown files under `.scratch/`.
-`spl-meter-mvp/spec.md` is the authority for *what* to build and cites those tickets **by path**
-(`issues/b13-…`) and by mvp number (`05 d2`).
+
+**The spec is the one thing under there that was never history, and it is no longer under there:**
+[`docs/spec.md`](../spec.md), moved out by
+[#17](https://github.com/thezic/brus-spl/issues/17). It is the authority for *what* to build and
+cites the closed tickets by `bNN` label and by mvp number (`05 d2`), linking the mvp ones as
+`../.scratch/spl-meter-mvp/issues/…`. So it is still the way into `.scratch/` — but everything it
+points at is history, and the spec itself is not.
 
 So when a skill says "fetch the relevant ticket" and the reference is a `bNN` or an `NN d<n>`,
 **read the file — don't reach for `gh`.** Only a GitHub issue number (`#N`) means the tracker.
