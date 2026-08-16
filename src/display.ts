@@ -15,6 +15,8 @@
 // belongs to the clock rather than to the string — see `LIVE_REFRESH_MS` in `Hero.vue`.
 
 import type { Settings, TimeWeighting } from "./bridge";
+import type { MarkerLevel } from "./marker";
+import { BAND_LABELS } from "./spectrogram";
 
 /** The sketch in spec §11 writes them out: `NOW · C · slow`, not `NOW · C · S`. */
 const WORD: Record<TimeWeighting, string> = { F: "fast", S: "slow" };
@@ -108,6 +110,64 @@ export function bandUnit(settings: Settings): string {
  * is where that comparison is actually made.
  */
 export const PICTURE_WEIGHTING = "unweighted";
+
+// ─── the marker's readout (spec §7.5, #15) ──────────────────────────────────────────────────
+//
+// Two strings on one line — `3.15 kHz · 74.8 dB/band` — and both of them are **static once
+// placed**: the frequency is fixed by the row and the level by the data point, so nothing here is
+// recomputed as the marker drifts. The hero number already owns *now*.
+
+/**
+ * The band's name with the unit spoken — `500 Hz`, `3.15 kHz`.
+ *
+ * **Built from [`BAND_LABELS`] rather than from a second list**, so the readout and the frequency
+ * gutter a few rows away cannot disagree about what a band is called. The axis has no room to say
+ * `Hz` and this does: `3.15k` sitting alone in a chip is a name a reader may not recognise as a
+ * frequency at all, and spelling the unit is what §7.5 asks for.
+ *
+ * **Snapped, never interpolated** (§7.5). At 20 px per band one pixel of finger movement is 37 Hz
+ * at 3.16 kHz while the row itself spans 730 Hz, so every digit of an interpolated `3422 Hz` but
+ * the leading one would be a function of where in the row the finger landed.
+ *
+ * `band` is a row index, `0 … 31`, as [`bandAt`](./marker.ts) clamps it.
+ */
+export function markerFrequency(band: number): string {
+  const name = BAND_LABELS[band];
+  return name.endsWith("k") ? `${name.slice(0, -1)} kHz` : `${name} Hz`;
+}
+
+/**
+ * The level half of the readout, **or which nothing there is** — spec §7.5's *an evicted slot and a
+ * gap must not read as the same thing*.
+ *
+ * `/band` is not decoration and is the whole defence of the number: an energy-summed row sits
+ * ~10.3 dB below the broadband total at best and ~15.5 dB below typically, so beside an 85 dB hero
+ * this reads ~75 at best and 40–70 usually. Unlabelled that reads as the hero being wrong. The unit
+ * comes from the value rather than from the live settings, so calibrating after a marker is placed
+ * cannot relabel a raw number `dB/band` — see [`MarkerLevel`](./marker.ts).
+ *
+ * The three absent states are three different claims and none of them may look like a level:
+ * **`gap`** is the picture's own hole, the word it is drawn as and the one thing here that is a
+ * statement about the moment; **`not kept`** is the ring having aged the slot out, which is a
+ * statement about the app; **`--`** is §11.5's *the instrument has nothing to say*, here because the
+ * command itself failed and no claim about the room can be made at all. `pending` is the empty
+ * string: it lasts only while a drag is live, and a level that is *about to* be asked for has
+ * nothing honest to put on screen.
+ */
+export function markerLevel(level: MarkerLevel): string {
+  switch (level.state) {
+    case "level":
+      return `${db(level.db)} ${level.unit}/band`;
+    case "gap":
+      return "gap";
+    case "outside":
+      return "not kept";
+    case "failed":
+      return "--";
+    case "pending":
+      return "";
+  }
+}
 
 // **There is no legend, and so no `legendEnds`/`legendLevel` here** (`b15`, spec §11.7). The
 // colour bar and its two end-labels are removed on the owner's call — they delivered no value —

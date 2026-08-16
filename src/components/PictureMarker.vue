@@ -1,0 +1,408 @@
+<script setup lang="ts">
+// The marker and its readout — spec §7.5, ticket [#15](https://github.com/thezic/brus-spl/issues/15).
+//
+// **One marker on the expanded picture, naming the band it sits on and that band's level.** It
+// graduates `b13`'s wish to *pinpoint problematic frequencies*, and the expanded view (§7.4) exists
+// underneath it because at the inline ~5.7 px per band a fingertip covers seven rows.
+//
+// ```
+//  ┌────────────────────────────────────────┐
+//  │                    │                   │
+//  │ ───────────────────┼── 3.15 kHz · 74.8 dB/band  ✕
+//  │                    │                   │
+//  └────────────────────────────────────────┘
+// ```
+//
+// **It is a DOM overlay, and that is load-bearing.** §7.3 spends the picture's whole design on
+// *append and scroll, never redraw the history*: the data canvas is the only thing ever scrolled,
+// and the visible canvas gets one `drawImage` of it per changed tick. A marker fits on neither. On
+// the data canvas it would scroll *with* the history and smear under the `"copy"` composite; on the
+// visible canvas the next blit's `clearRect` would wipe it, so keeping it would mean repainting per
+// tick something that changes only when a finger moves. HTML rather than a third canvas because the
+// readout is *text*: the browser measures it, which is what [`placeChip`] needs before it can decide
+// whether the chip fits.
+//
+// **The whole coupling to the picture is one [`Geometry`] object**, republished by
+// `Spectrogram.vue` on every reconfigure. That is what lets the gutter's width stop being a constant
+// and what keeps this file ignorant of both canvases.
+//
+// **The frontend still holds no authoritative state** (§9.5, §8.2). The marker is a `(slot, band)`
+// and a level that came from Rust already calibrated; there is no column ring here, no dB
+// arithmetic, and no per-band history — which is also why there is no hit assist (§7.5).
+
+import { computed, onUnmounted, ref, watch } from "vue";
+
+import { getSlotLevels, type Unit } from "../bridge";
+import { markerFrequency, markerLevel } from "../display";
+import {
+  bandAt,
+  columnX,
+  insidePlot,
+  placeChip,
+  rightBucketOf,
+  rowCentre,
+  slotAt,
+  type Marker,
+  type MarkerLevel,
+} from "../marker";
+import type { Geometry } from "../spectrogram";
+
+const props = defineProps<{
+  /** The plot rect and pixel budget in CSS px. `null` until the picture has measured itself. */
+  geometry: Geometry | null;
+  /** The right edge, from the last tick — the marker's `x` is re-derived from it every tick. */
+  nowSlot: number;
+  /**
+   * The unit a level fetched *now* would be in, from the tick (spec §9.1).
+   *
+   * Read at the moment the readout is filled in and then **stored with the value**, never again:
+   * §7.5's label is static, and calibrating after a marker is placed must not relabel a raw `dBFS`
+   * number as `dB`.
+   */
+  unit: Unit;
+}>();
+
+/**
+ * The placed marker, **owned by the parent** — spec §7.5's *survives expanding and reopening*.
+ *
+ * This component is mounted only while the picture is expanded, so state kept here would be
+ * discarded by the close button and by every rotation back to portrait. The parent outlives both.
+ */
+const marker = defineModel<Marker | null>({ required: true });
+
+const root = ref<HTMLDivElement>();
+const chip = ref<HTMLDivElement>();
+let dragging = false;
+
+// ─── where it is drawn now ──────────────────────────────────────────────────────────────────
+
+const rightBucket = computed(() =>
+  props.geometry ? rightBucketOf(props.geometry, props.nowSlot) : 0,
+);
+
+/** The crosshair's intersection in the picture box, or `null` when there is nothing to draw. */
+const point = computed(() => {
+  const g = props.geometry;
+  const m = marker.value;
+  if (!g || !m) return null;
+  const x = columnX(g, rightBucket.value, m.slot);
+  if (x === null) return null;
+  return { x, y: rowCentre(g, m.band) };
+});
+
+/**
+ * **Vanishes at the left edge** (spec §7.5) — the slot the marker named has scrolled out of the
+ * picture, so there is nothing left for it to point at.
+ *
+ * The state is **dropped, not hidden**: a marker merely hidden would reappear if the span were later
+ * widened, pointing at a moment the reader has no way to connect to what they marked.
+ *
+ * Asked as *is it off the picture* rather than *is there a point* on purpose, and the difference is
+ * the whole reason this is not a watcher on [`point`]. `point` is also `null` whenever the geometry
+ * is — which is exactly what expanding and rotating do for a frame, while the parent waits for the
+ * picture to republish its rect — and dropping the marker there would break the same sentence of
+ * §7.5 that this rule comes from. `immediate`, because a marker can be off the picture already when
+ * this component mounts: it drifted while the view was inline, where nothing was watching.
+ */
+const offPicture = computed(() => {
+  const g = props.geometry;
+  const m = marker.value;
+  if (!g || !m) return false;
+  return columnX(g, rightBucket.value, m.slot) === null;
+});
+
+watch(
+  offPicture,
+  (off) => {
+    if (off && !dragging) marker.value = null;
+  },
+  { immediate: true },
+);
+
+// ─── the readout ────────────────────────────────────────────────────────────────────────────
+
+const frequency = computed(() =>
+  marker.value ? markerFrequency(marker.value.band) : "",
+);
+const level = computed(() =>
+  marker.value ? markerLevel(marker.value.level) : "",
+);
+
+/** The chip's measured size — [`placeChip`] cannot clamp a box it has not been given. */
+const chipW = ref(0);
+const chipH = ref(0);
+let observer: ResizeObserver | null = null;
+
+watch(chip, (element) => {
+  observer?.disconnect();
+  observer = null;
+  if (!element) return;
+  observer = new ResizeObserver(() => {
+    chipW.value = element.offsetWidth;
+    chipH.value = element.offsetHeight;
+  });
+  observer.observe(element);
+});
+
+onUnmounted(() => observer?.disconnect());
+
+const chipBox = computed(() => {
+  const g = props.geometry;
+  const p = point.value;
+  if (!g || !p || chipW.value === 0) return null;
+  return placeChip(g, p.x, p.y, chipW.value, chipH.value);
+});
+
+// ─── the gesture ────────────────────────────────────────────────────────────────────────────
+//
+// **`drag` places and moves it** (spec §7.5) — the one gesture that shows where the marker will land
+// before you commit to it, which is also what removes the need for a hit assist to compensate for a
+// fingertip. A tap is the degenerate case of it and needs no separate path; the `✕` is the only
+// dismissal, which is why the marker itself takes no press of its own.
+
+/** Only the newest gesture may fill in a readout — a fast re-place starts a second round trip. */
+let pending = 0;
+
+function localPoint(event: PointerEvent): { x: number; y: number } {
+  const rect = root.value!.getBoundingClientRect();
+  return { x: event.clientX - rect.left, y: event.clientY - rect.top };
+}
+
+/**
+ * Place or move the marker.
+ *
+ * `initial` is the difference between the press that starts a gesture and the moves that follow: a
+ * press in a gutter places nothing, because the gutters are not the picture, while a drag that
+ * slides into one clamps and keeps going — lifting a finger to recover would be worse. It is also
+ * what makes a second press on an unchanged `(slot, band)` re-ask for the level rather than being
+ * skipped as a no-op move, which is the only way to retry a failed round trip.
+ */
+function place(x: number, y: number, initial: boolean): void {
+  const g = props.geometry;
+  if (!g) return;
+  if (initial && !insidePlot(g, x, y)) return;
+  const cx = Math.min(g.plotX + g.plotW, Math.max(g.plotX, x));
+  const cy = Math.min(g.plotY + g.plotH, Math.max(g.plotY, y));
+
+  const slot = slotAt(g, rightBucket.value, cx);
+  const band = bandAt(g, cy);
+  const current = marker.value;
+  if (!initial && current && current.slot === slot && current.band === band) return;
+
+  marker.value = { slot, band, level: { state: "pending" } };
+}
+
+/**
+ * Ask Rust what that slot's bands were — **once, when the marker lands**, never per tick and never
+ * per pointer move. §7.5's label is static, so this is a per-gesture round trip.
+ *
+ * The level comes from here rather than from inverting the colour ramp off the canvas or from a ring
+ * on this side: that is what keeps §8.2 (*calibration is applied post-log, in Rust*) exception-free
+ * and §9.5 intact.
+ */
+async function fillLevel(): Promise<void> {
+  const placed = marker.value;
+  if (!placed) return;
+  const token = ++pending;
+
+  let level: MarkerLevel;
+  try {
+    const answer = await getSlotLevels(placed.slot);
+    if (answer.state === "levels") {
+      const value = answer.bands[placed.band];
+      // The bridge is hand-written, so a renamed or reordered field arrives as `undefined` rather
+      // than as a compile error (`src/bridge.ts`). A readout is a number a reader trusts, so an
+      // unusable answer says so instead of printing `NaN dB/band`.
+      level = Number.isFinite(value)
+        ? { state: "level", db: value, unit: props.unit }
+        : { state: "failed" };
+    } else {
+      level = { state: answer.state };
+    }
+  } catch (error) {
+    // A failed command is not a claim about the room, and must not be shown as one (spec §6.9).
+    console.error("marker: get_slot_levels failed", error);
+    level = { state: "failed" };
+  }
+
+  // Superseded, or the marker has since been moved, dismissed or scrolled off the picture.
+  const still = marker.value;
+  if (token !== pending || !still || still.slot !== placed.slot || still.band !== placed.band) {
+    return;
+  }
+  marker.value = { ...still, level };
+}
+
+function onDown(event: PointerEvent): void {
+  if (!props.geometry) return;
+  const { x, y } = localPoint(event);
+  const before = marker.value;
+  place(x, y, true);
+  // Nothing was placed — the press was in a gutter, and an existing marker keeps what it had.
+  if (marker.value === before) return;
+  dragging = true;
+  // Capture so a drag that leaves the box keeps arriving. Guarded because a synthetic pointer has
+  // no active pointer to capture and throws.
+  try {
+    root.value?.setPointerCapture(event.pointerId);
+  } catch {
+    /* not a real pointer */
+  }
+}
+
+function onMove(event: PointerEvent): void {
+  if (!dragging) return;
+  const { x, y } = localPoint(event);
+  place(x, y, false);
+}
+
+/** Release commits: the level is what the marker **landed** on, not what it passed over. */
+function onUp(): void {
+  if (!dragging) return;
+  dragging = false;
+  void fillLevel();
+}
+
+function clear(): void {
+  marker.value = null;
+  // Nothing in flight may fill in a readout for a marker that is gone.
+  pending += 1;
+}
+</script>
+
+<template>
+  <div
+    ref="root"
+    class="overlay"
+    @pointerdown="onDown"
+    @pointermove="onMove"
+    @pointerup="onUp"
+    @pointercancel="onUp"
+  >
+    <template v-if="geometry && point">
+      <!-- **A full crosshair** (spec §7.5): the row runs the whole plot so it can be sighted along
+           to the frequency gutter, which is the reading the marker exists for, and the column does
+           the same for the moment. **No halo** — the accent is chosen to survive inferno on its own,
+           and a dark outline under every stroke is more ink over the picture than the marker is. -->
+      <div
+        class="rule row"
+        :style="{
+          left: `${geometry.plotX}px`,
+          width: `${geometry.plotW}px`,
+          top: `${point.y}px`,
+        }"
+      ></div>
+      <div
+        class="rule column"
+        :style="{
+          top: `${geometry.plotY}px`,
+          height: `${geometry.plotH}px`,
+          left: `${point.x}px`,
+        }"
+      ></div>
+      <div class="ring" :style="{ left: `${point.x}px`, top: `${point.y}px` }"></div>
+
+      <!-- Hidden rather than unmounted until it has been measured: [`placeChip`] needs a laid-out
+           width, and a chip painted at `0,0` for that one frame lands in the picture's corner. -->
+      <div
+        ref="chip"
+        class="chip"
+        :style="{
+          left: `${chipBox?.left ?? 0}px`,
+          top: `${chipBox?.top ?? 0}px`,
+          opacity: chipBox ? 1 : 0,
+        }"
+        @pointerdown.stop
+      >
+        <span class="frequency">{{ frequency }}</span>
+        <span v-if="level" class="level">{{ level }}</span>
+        <!-- **The only dismissal `drag` has**, and spec §15 records its size as open: 12 px of
+             glyph is fine under a mouse and is not obviously a tap target. Left as specified for
+             the device check rather than grown on the desk. -->
+        <button type="button" class="dismiss" aria-label="Remove the marker" @click="clear">
+          ✕
+        </button>
+      </div>
+    </template>
+  </div>
+</template>
+
+<style scoped>
+/* **Covers the whole picture box and takes every pointer event over it** (spec §7.5) — gutters
+   included, because a drag that slides into one has to keep being tracked. That is why the corner
+   buttons over the picture sit *after* this element in the DOM and stop propagation of their own
+   presses: otherwise the readout swallows them.
+
+   `touch-action: none` so a drag across the picture is a drag and not a page scroll, and no text
+   selection, so a slow press does not turn the readout blue. */
+.overlay {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* **The accent, `#5ac8fa`** (spec §7.5). §11.8's rule that the accent never means alarm is why it
+   is available here: a marker is an affordance, not a level. Red was refused as an alarm colour on
+   the one screen designed not to have one, and white loses against inferno's near-white top. */
+.rule,
+.ring {
+  position: absolute;
+  pointer-events: none;
+}
+
+.rule {
+  background: var(--accent);
+}
+
+.row {
+  height: 1px;
+  transform: translateY(-0.5px);
+}
+
+.column {
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+
+.ring {
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid var(--accent);
+  border-radius: 50%;
+}
+
+.chip {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.2rem 0.4rem;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  white-space: nowrap;
+  color: var(--ink);
+  /* Near-opaque rather than translucent: the chip sits over the hot end of the ramp as often as the
+     cool end, and a translucent plate is unreadable over `#fcffa4`. This is the same exception
+     `.plot-corner` takes — §7.4's *no plate, no scrim* is about the hero number, which is data;
+     a readout nobody can read is not a readout. */
+  background: rgba(10, 10, 12, 0.88);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+
+.level {
+  color: var(--ink-dim);
+}
+
+.dismiss {
+  all: unset;
+  padding: 0 0.15rem;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+</style>
