@@ -99,16 +99,28 @@ watch(
 .quantity {
   margin: 0;
   font-family: var(--mono);
-  font-size: 0.85rem;
+  font-size: var(--hero-sub, 0.85rem);
   letter-spacing: 0.09em;
   color: var(--ink-dim);
 }
 
+/* **The four `--hero-*` variables exist so the expanded view can reuse this component rather than
+   restate it** (#14, spec §7.4). Every fallback is the inline value, so an override is the only
+   thing that can change what §11.5 specifies here, and the inline screen sets none. What is being
+   reused is not the CSS — it is [`LIVE_REFRESH_MS`] and the `--` rule above, which are behaviour
+   and must not exist twice.
+
+   **`--hero-sub` backs both the quantity line and the unit, whose inline sizes differ** — 0.85rem
+   and 1rem. That is one knob for two slots and it is deliberate: §11.8 keeps everything smaller
+   than the number in mono, and at a resized hero there is one small-text size rather than two.
+   The differing fallbacks are what preserves the inline screen exactly; setting the variable
+   collapses them, which is what the expanded view wants. Splitting it in two would add a knob
+   nothing has a reason to turn independently. */
 .value {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 7.5rem;
+  height: var(--hero-line, 7.5rem);
   margin: 0.1rem 0 0;
 }
 
@@ -129,7 +141,7 @@ watch(
      is a measurement the layout is built on — the wide reflow's column is sized from the same
      371 px — and `b14` is a fix for how often a number *repaints*, not for how much room it
      takes. The tenth being back makes `−108.4` the widest string again, as measured. */
-  font-size: min(7.5rem, calc(31vw - 12px));
+  font-size: var(--hero-size, min(7.5rem, calc(31vw - 12px)));
   font-variant-numeric: tabular-nums;
   font-weight: 300;
   line-height: 1;
@@ -142,7 +154,7 @@ watch(
      dashes render as a pair of solid filled blocks — a redaction bar, which reads as *withheld*
      rather than as *nothing to say*. The letter-spacing is what keeps them two dashes. */
   font-family: var(--sans);
-  font-size: 2.5rem;
+  font-size: var(--hero-absent, 2.5rem);
   font-weight: 300;
   line-height: 1;
   letter-spacing: 0.22em;
@@ -152,7 +164,7 @@ watch(
 .unit {
   margin: 0.15rem 0 0;
   font-family: var(--mono);
-  font-size: 1rem;
+  font-size: var(--hero-sub, 1rem);
   letter-spacing: 0.14em;
   color: var(--ink-dim);
 }
