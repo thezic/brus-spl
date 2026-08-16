@@ -14,7 +14,7 @@
 // bare `MAX 72.4 dB` never arises.
 
 import type { Meter, Settings } from "../bridge";
-import { coverage, db, leqLabel } from "../display";
+import { coverage, db, leqLabel, MAX_LABEL } from "../display";
 
 defineProps<{
   meter: Meter;
@@ -34,7 +34,7 @@ defineProps<{
     </div>
 
     <div class="cell">
-      <p class="label">MAX</p>
+      <p class="label">{{ MAX_LABEL }}</p>
       <p class="value">
         <span v-if="meter.max !== null">{{ db(meter.max) }}</span>
         <span v-else class="absent">--</span>

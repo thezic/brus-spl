@@ -44,6 +44,16 @@ export function leqLabel(settings: Settings): string {
 }
 
 /**
+ * The max hold's label, and it takes **no** dimensions of its own — spec §11.3's one header above
+ * the hero serves both, so a bare `MAX 72.4 dB` never arises.
+ *
+ * A constant rather than a function, and here rather than inline in the two components that draw
+ * it: the inline screen (`Secondary.vue`) and the expanded view (`ExpandedChrome.vue`) put the same
+ * word beside the same number, and one of them having its own copy is how the pair drifts.
+ */
+export const MAX_LABEL = "MAX";
+
+/**
  * `33s of 60s`, and `60s of 60s` when full (spec §6.4). Published **always**, never conditional
  * on being degraded — an indicator that appears only when something is wrong is a warning.
  *
