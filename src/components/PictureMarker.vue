@@ -396,16 +396,23 @@ function drop(): void {
   transform: translateX(-0.5px);
 }
 
-/* The ring is the prototype's and is kept as it was judged there. **It is the one part of the
-   marker that is not bounded by the plot**: on the leftmost column ~7 px of it sits over the
-   frequency gutter, and in landscape, where a band is ~12 px, ~2 px of it clears the top frame.
-   Left rather than clipped — a clipped ring is a half-moon, which reads as a rendering fault where
-   an overhanging one reads as a marker at the edge — and the left-edge case lasts a tick or two
-   before §7.5 drops the marker anyway. Seen, not overlooked. */
+/* The ring is the prototype's, at the 20 px it was judged at — but **`border-box`, and that is the
+   whole of it being centred.** There is no global box-sizing reset in this app (each site opts in),
+   so the prototype's `width: 16px` plus a 2 px border was a 20 px box pulled back by only 8 px: the
+   ring sat 2 px down and right of the crosshair it is supposed to mark. Invisible under a mouse and
+   immediately obvious on the phone. Stating the outer diameter and letting the border eat into it is
+   what keeps the offset and the size one number apart rather than two that must agree.
+
+   **It is the one part of the marker not bounded by the plot**: on the leftmost column ~9 px of it
+   sits over the frequency gutter, and in landscape, where a band is ~12 px, ~4 px clears the top
+   frame. Left rather than clipped — a clipped ring is a half-moon, which reads as a rendering fault
+   where an overhanging one reads as a marker at the edge — and the left-edge case lasts a tick or
+   two before §7.5 drops the marker anyway. Seen, not overlooked. */
 .ring {
-  width: 16px;
-  height: 16px;
-  margin: -8px 0 0 -8px;
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
   border: 2px solid var(--accent);
   border-radius: 50%;
 }
