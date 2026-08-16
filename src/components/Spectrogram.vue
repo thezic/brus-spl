@@ -112,6 +112,19 @@ const LABEL_PT = 10;
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 /**
+ * What the gutter holds beside the label itself: the gap from the label's right edge to the plot,
+ * the tick drawn inside that gap, and the clear space left of the longest label.
+ *
+ * Named because the gutter is now **measured** against them (spec §7.4) rather than fixed at 40.
+ * The gap was a literal in [`drawChrome`] and reappeared inside a `+ 11` in [`measuredGutter`] —
+ * two places to change and one of them silent, since widening the gap alone would clip the very
+ * labels the gutter was measured for.
+ */
+const LABEL_GAP = 7;
+const TICK_W = 4;
+const GUTTER_MARGIN = 4;
+
+/**
  * The box and the plot inside it, in CSS px — both a function of the `height` prop (spec §7.4).
  *
  * Floored at an axis plus one device row per band: below that the rows stop being rows, and the
@@ -214,10 +227,13 @@ function ink(name: string, fallback: string): string {
  * How wide the left gutter has to be for the ladder it is about to hold, in CSS pixels.
  *
  * **40 px is a floor and not a value** (spec §7.4). §11.7's figure was measured against `b15`'s
- * widest string — `31.5`, 24 px at 10 px mono — plus the 7 px gap and the 4 px tick; a denser
- * ladder brings five-character strings (`3.15k`, `12.5k`), so the gutter is measured rather than
- * assumed. It never narrows below 40: the inline picture keeps the geometry §11.7 records, and a
- * picture whose left edge moved when a label got shorter would be a picture that jitters.
+ * widest string — `31.5`, 24 px at 10 px mono — plus the gap the tick sits in; a denser ladder
+ * brings five-character strings (`3.15k`, `12.5k`), so the gutter is measured rather than assumed.
+ * It never narrows below 40: the inline picture keeps the geometry §11.7 records, and a picture
+ * whose left edge moved when a label got shorter would be a picture that jitters.
+ *
+ * The widest label plus [`LABEL_GAP`] is what it takes for nothing to *clip*; [`GUTTER_MARGIN`] is
+ * on top of that so the longest label is not flush against the canvas's own left edge.
  *
  * Measured in device pixels and divided back, because that is the font the labels are actually
  * drawn in.
@@ -228,7 +244,7 @@ function measuredGutter(g: CanvasRenderingContext2D): number {
   for (const [, name] of ladder) {
     widest = Math.max(widest, g.measureText(name).width / dpr);
   }
-  return Math.max(GUTTER_LEFT, Math.ceil(widest) + 11);
+  return Math.max(GUTTER_LEFT, Math.ceil(widest) + LABEL_GAP + GUTTER_MARGIN);
 }
 
 /**
@@ -347,8 +363,8 @@ function drawChrome(): void {
       Math.max(centre, plotY + px(LABEL_PT / 2)),
       plotY + plotH - px(LABEL_PT / 2),
     );
-    g.fillText(name, plotX - px(7), text);
-    g.fillRect(plotX - px(4), Math.round(centre), px(4), 1);
+    g.fillText(name, plotX - px(LABEL_GAP), text);
+    g.fillRect(plotX - px(TICK_W), Math.round(centre), px(TICK_W), 1);
   }
 
   // **No colour legend** (`b15`). Nothing is drawn to the right of the plot at all — the ramp
