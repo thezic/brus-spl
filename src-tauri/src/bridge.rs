@@ -113,6 +113,50 @@ impl From<(u64, [f32; BANDS])> for Column {
     }
 }
 
+/// What one slot's 32 bands are — or, when there is no number, **which** kind of nothing it is.
+///
+/// Spec §7.5's readout, and the reason it is a three-state answer rather than an `Option`:
+/// [`Spectrum::column`] returns `None` both for a slot that aged out of the ring and for a slot
+/// that was a gap, and *no data kept* and *silence* are different claims. §6.9's refusal to
+/// publish a fake quiet applies to a readout exactly as it applies to the hero number, so the
+/// distinction has to survive the crossing rather than be reconstructed on the far side.
+///
+/// The wire shape is a tagged union — `{"state":"levels","bands":[…32]}`, `{"state":"gap"}`,
+/// `{"state":"outside"}` — so the frontend reads one discriminant and cannot mistake an empty
+/// array for a quiet room. [`Spectrum::retained_slots`] is what separates the last two: inside the
+/// ring's bounds a missing column *is* a hole; outside them the app is not claiming anything.
+///
+/// **The values are calibrated and rounded to 0.1 dB, unlike [`Column::bands`]** — the two
+/// disagree deliberately. A column feeds spec §7.1's colour ramp, whose window shifts *by* the
+/// offset so that no pixel moves; this is a number a reader looks at, so §8.2 applies to it the
+/// same way it applies to every other displayed dB value. It is per-band dB and reads ~10–15 dB
+/// below the hero for that reason; labelling it as such is §7.5's job on the frontend.
+// 264 bytes in the wide variant against none in the two empty ones, which `large_enum_variant`
+// is right about in general and wrong about here: one of these is built per marker placement,
+// serialized and dropped. Boxing would trade a move nobody can measure for a heap allocation.
+#[allow(clippy::large_enum_variant)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(tag = "state", rename_all = "lowercase")]
+pub enum SlotLevels {
+    /// 32 calibrated per-band levels, low row first — the same order as [`Column::bands`].
+    Levels { bands: [f64; BANDS] },
+    /// The ring covers this slot and holds no column for it: spec §7.3's hole, and the picture
+    /// draws nothing here either.
+    Gap,
+    /// The slot is outside the ring, so there is nothing to keep and nothing to claim: it has
+    /// **aged out** of the 1200-slot history, or it is **ahead of the present**. Spec §7.5 calls
+    /// the first of those *evicted*, which is the only one a marker can actually reach — the name
+    /// here is the wider one because a future slot was never evicted from anything, and both are
+    /// one claim to the caller: *there is no data here and asking again will not help*.
+    ///
+    /// **Not spec §7.5's "vanishes at the left edge".** That edge is the display span, 10 to
+    /// 120 s, while this ring is 120 s at every span — so the two coincide only at 120 s, and at
+    /// a 10 s span a marker 30 s old is off the picture and still answers [`SlotLevels::Levels`].
+    /// A marker leaving the plot is geometry the frontend already owns; this answer is the ring
+    /// running out, which is the *other* reason a marker stops having a level.
+    Outside,
+}
+
 /// The four settings **and the unit**, as spec §9.1 puts them on the wire.
 ///
 /// The unit rides in every tick beside the values, which extends spec §8.2's footgun-denial from
@@ -226,6 +270,16 @@ fn round_01(value: f64) -> f64 {
 /// rounding error ride through the addition rather than being the last thing that happens.
 fn published(settings: &Settings, raw_db: Option<f64>) -> Option<f64> {
     settings.calibrated(raw_db).map(round_01)
+}
+
+/// [`published`] for a value that is always present.
+///
+/// A band that reached the ring is a number — the gap case is the *absence* of a column, which
+/// [`SlotLevels`] carries as its own state rather than as 32 nulls. Going through
+/// [`Settings::calibrated`] rather than adding [`Settings::offset_db`] here keeps the uncalibrated
+/// case (spec §8.6: raw dBFS, correctly labelled) one decision in one place.
+fn published_band(settings: &Settings, raw: f32) -> f64 {
+    published(settings, Some(raw as f64)).expect("a band value is never absent")
 }
 
 /// Spec §9.4's three states, from the two authoritative sources.
@@ -582,6 +636,40 @@ impl AppState {
             .map(Column::from)
             .collect()
     }
+
+    /// One slot's 32 band levels, calibrated — spec §7.5's readout.
+    ///
+    /// **Per slot rather than per bucket**, which is the whole reason it comes from here: the
+    /// frontend owns the pixel budget, so a bucket is a frontend fact, while a slot's identity is
+    /// the one thing both sides already agree on (`#10`). It answers for any slot the ring still
+    /// holds, which is **120 s regardless of the display span** — so at every span but 120 s it
+    /// answers for data the picture stopped showing a while ago, and
+    /// [`SlotLevels::Outside`] is therefore not the frontend's cue that a marker has scrolled off.
+    ///
+    /// **The right edge is the ring's, not the clock's**, exactly as in [`AppState::spectrogram`]:
+    /// [`Metrics::now_slot`] is advanced by the tick, so a tap landing between ticks is answered
+    /// against the same `now_slot` the frontend was last told — and a marker can only sit on a slot
+    /// the frontend has already been told about, so the bound can never cut one off. Reading the
+    /// clock here instead would answer for slots no tick has mentioned yet at one end, and age the
+    /// other end out up to a tick before the picture drops it.
+    ///
+    /// Reads three locks and mutates nothing, so a tap can never disturb the picture (spec §6.11).
+    pub fn slot_levels(&self, slot: u64) -> SlotLevels {
+        // Lock order, as everywhere: metrics, then spectrum, then settings.
+        let now_slot = self.metrics.lock().unwrap().now_slot();
+        let spectrum = self.spectrum.lock().unwrap();
+        let settings = self.settings.lock().unwrap().settings();
+
+        if !Spectrum::retained_slots(now_slot).contains(&slot) {
+            return SlotLevels::Outside;
+        }
+        match spectrum.column(slot) {
+            Some(bands) => SlotLevels::Levels {
+                bands: bands.map(|raw| published_band(&settings, raw)),
+            },
+            None => SlotLevels::Gap,
+        }
+    }
 }
 
 #[tauri::command(rename_all = "snake_case")]
@@ -637,6 +725,17 @@ pub fn reset(state: State<'_, AppState>) -> WireSettings {
 #[tauri::command(rename_all = "snake_case")]
 pub fn get_spectrogram(state: State<'_, AppState>) -> Vec<Column> {
     state.spectrogram()
+}
+
+/// The eighth, and the second that is not about settings — spec §7.5, §9.1.
+///
+/// Called once when the marker is placed and never again: §7.5's label is static, so this is a
+/// per-gesture round trip rather than anything the tick has to carry. **No capability entry**,
+/// like every other command here — Tauri 2 gates plugin and core APIs, not app commands, and
+/// `src-tauri/capabilities/default.json` lists only `core:default` and `opener:default`.
+#[tauri::command(rename_all = "snake_case")]
+pub fn get_slot_levels(state: State<'_, AppState>, slot: u64) -> SlotLevels {
+    state.slot_levels(slot)
 }
 
 #[cfg(test)]
@@ -1563,6 +1662,124 @@ mod tests {
             rig.state.spectrogram(),
             before,
             "a command cleared or shifted the picture"
+        );
+    }
+
+    // ── the marker's readout: spec §7.5 ───────────────────────────────────────────────────────
+
+    fn bands_of(answer: SlotLevels) -> [f64; BANDS] {
+        match answer {
+            SlotLevels::Levels { bands } => bands,
+            other => panic!("a real slot answered {other:?}"),
+        }
+    }
+
+    /// **The readout names the data the picture drew, and it arrives calibrated** (spec §7.5,
+    /// §8.2). Both halves are asserted against the *same* column off the wire, because the whole
+    /// point of taking this route rather than reading the canvas back is that the two cannot be
+    /// two different numbers.
+    ///
+    /// The pairing with [`Column::bands`] is deliberately unequal: a column stays raw so §7.1's
+    /// colour window can shift by the offset and leave every pixel where it was, while this is a
+    /// number a reader looks at, so it is calibrated and rounded like every other one. The
+    /// uncalibrated leg is spec §8.6 — raw dBFS is a correctly-named state, not an error.
+    #[test]
+    fn the_readout_names_the_columns_own_bands_and_calibrates_them() {
+        let mut rig = Rig::new();
+        rig.prime();
+        rig.wait(0.2);
+        rig.feed(2, 0.5);
+
+        let tick = rig.tick();
+        let drawn = *tick.columns.last().expect("a column");
+
+        let uncalibrated = bands_of(rig.state.slot_levels(drawn.slot));
+        for (row, (level, raw)) in uncalibrated.iter().zip(drawn.bands).enumerate() {
+            assert_eq!(*level, round_01(raw as f64), "row {row} before calibration");
+        }
+
+        rig.state
+            .apply_calibration_offset(101.4)
+            .expect("a finite offset");
+
+        let calibrated = bands_of(rig.state.slot_levels(drawn.slot));
+        for (row, (level, raw)) in calibrated.iter().zip(drawn.bands).enumerate() {
+            assert_eq!(*level, round_01(raw as f64 + 101.4), "row {row} calibrated");
+        }
+        assert_eq!(
+            rig.state.spectrogram().last().expect("a column").bands,
+            drawn.bands,
+            "calibrating moved the picture's own values"
+        );
+    }
+
+    /// **A slot outside the ring and a gap are different answers** — spec §7.5's *an evicted slot
+    /// and a gap are the same `None`*, which is exactly what must not reach the screen as one
+    /// thing. [`Spectrum::column`] returns `None` to both. *No data kept* and *silence* are different
+    /// claims, and §6.9's refusal to publish a fake quiet applies to a readout as much as to the
+    /// hero number: a marker on a silent slot must not read as one whose data aged out, and a
+    /// marker whose data aged out must vanish rather than claim the room was quiet.
+    ///
+    /// The boundary is asserted on adjacent slots, both of them holes, so the *only* thing
+    /// deciding the answer is [`Spectrum::retained_slots`].
+    #[test]
+    fn a_slot_outside_the_ring_and_a_gap_are_not_the_same_answer() {
+        let mut rig = Rig::new();
+        rig.prime();
+        rig.wait(0.2);
+        rig.feed(2, 0.5);
+        let early = rig.tick().columns.last().expect("a column").slot;
+
+        // Two minutes of silence, then one more column: the ring has rolled clean past `early`.
+        rig.wait(121.0);
+        rig.feed(1, 0.5);
+        let now = rig.tick().now_slot;
+
+        assert!(matches!(
+            rig.state.slot_levels(now),
+            SlotLevels::Levels { .. }
+        ));
+        assert_eq!(
+            rig.state.slot_levels(now - 1199),
+            SlotLevels::Gap,
+            "the oldest slot the ring keeps is a hole, not lost data"
+        );
+        assert_eq!(
+            rig.state.slot_levels(now - 1200),
+            SlotLevels::Outside,
+            "one slot further back is gone, and saying `gap` would invent a silence"
+        );
+        assert_eq!(rig.state.slot_levels(early), SlotLevels::Outside);
+        assert_eq!(
+            rig.state.slot_levels(now + 1),
+            SlotLevels::Outside,
+            "a slot ahead of the present is not data being withheld"
+        );
+    }
+
+    /// The three states on the wire, pinned like the tick's shape is — `vue-tsc` cannot check the
+    /// crossing, so a renamed discriminant is a runtime `undefined` in `src/bridge.ts`.
+    ///
+    /// The distinct band values pin the row **order** as well as the count: a reversed or rotated
+    /// layout would still be 32 floats. And neither empty state carries a `bands` key at all,
+    /// which is what stops an empty array reading as a quiet room.
+    #[test]
+    fn the_readouts_three_states_are_distinguishable_on_the_wire() {
+        let levels = SlotLevels::Levels {
+            bands: std::array::from_fn(|row| row as f64 - 90.0),
+        };
+
+        assert_eq!(
+            serde_json::to_string(&levels).unwrap(),
+            r#"{"state":"levels","bands":[-90.0,-89.0,-88.0,-87.0,-86.0,-85.0,-84.0,-83.0,-82.0,-81.0,-80.0,-79.0,-78.0,-77.0,-76.0,-75.0,-74.0,-73.0,-72.0,-71.0,-70.0,-69.0,-68.0,-67.0,-66.0,-65.0,-64.0,-63.0,-62.0,-61.0,-60.0,-59.0]}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SlotLevels::Gap).unwrap(),
+            r#"{"state":"gap"}"#
+        );
+        assert_eq!(
+            serde_json::to_string(&SlotLevels::Outside).unwrap(),
+            r#"{"state":"outside"}"#
         );
     }
 
