@@ -937,7 +937,8 @@ is unmistakable.
 ## 9. The Rust ↔ frontend contract
 
 **One event at 10 Hz carrying everything the screen paints, plus one command that returns the
-picture's history. The frontend holds no authoritative state at all** (`08`).
+picture's history — and, since §7.5, one that answers for a single slot of it. The frontend holds
+no authoritative state at all** (`08`).
 
 The tick is **≈460 bytes, ≈4.6 kB/s** — about **17× under** the 8192-byte threshold at which
 Tauri's own IPC switches to its faster bulk path, so it never leaves the fast path.
@@ -969,17 +970,27 @@ commands  — all settings commands return the new Settings
   set_calibration_offset(offset_db)              // Result
   reset()
   get_spectrogram() → Column[]                   // per-slot columns for the current span
+  get_slot_levels(slot) → SlotLevels             // one slot's 32 bands, or why there are none (§7.5)
+
+SlotLevels — a tagged union, because two different nothings must not read alike
+  { state: "levels", bands: [...32] }  // calibrated, 0.1 dB, low row first
+  { state: "gap" }                     // in the ring and empty: §7.3's hole
+  { state: "evicted" }                 // outside the ring: nothing is being claimed
 ```
 
 Field types: `weighting: "C" | "A" | "Z"`, `time_weighting: "F" | "S"`,
 `window_s: 10 | 30 | 60 | 120`, `unit: "dB" | "dBFS"`, all dB values `f64` rounded to 0.1 dB,
 `slot: u64`, `bands: [f32; 32]`.
 
-**Seven commands, not eight.** `08` decision 9's prose says "five types and eight commands"
-while its own contract block lists seven; the seven above are the complete set. There is
-deliberately **no `get_settings`** (the first tick arrives ≤100 ms after the listener
-registers) and **no clear-calibration command** (uncalibrated is the initial state; a wrong
-offset is retyped).
+**`get_slot_levels` is the one place a band value is calibrated** (`#12`). A column's bands stay
+raw because §7.1's colour window shifts *by* the offset and no pixel moves; this is a number a
+reader looks at, so §8.2 applies to it like every other displayed dB value.
+
+**Eight commands — the eighth is §7.5's readout** (`#12`), and it took a map to add. Before it,
+seven was the complete set and was worth stating because `08` decision 9's prose says "five types
+and eight commands" while its own contract block lists seven. There is still deliberately **no
+`get_settings`** (the first tick arrives ≤100 ms after the listener registers) and **no
+clear-calibration command** (uncalibrated is the initial state; a wrong offset is retyped).
 
 ### 9.2 Properties worth stating rather than leaving to be inferred
 
@@ -1721,7 +1732,7 @@ list exists so a reader who goes back to a ticket is not misled.
 | `07` d8's "the picture is literally what is inside the number" | Read as **the same span, not the same data** (`08` d5) — Reset does not clear the picture. |
 | `07`'s ~52 px legend gutter | **58 px** (`09` f6) — `dBFS/band` is four characters longer than `dB/band` and overprinted the `now` label. **Then none at all** (`b15`) — the legend went and the plot took the width; see the row below. |
 | `07`'s "if space forces the legend out" trade, and `09` d9's *"the legend stays"* | **Reversed: the legend is removed and the plot reclaims its 58 px** (`b15`, §11.7). Not a re-litigation — `09` declined a **space** trade, on the grounds that space did not force it; the owner's objection is that the legend **delivers no value**, which was never argued either way. §7.1's fixed window is untouched, so the same colour still *is* the same absolute level — that property is now true of the data without being readable off the screen, and naming those levels is the only thing lost. §7.2 is unharmed because `unweighted` was put on the caption line, not on the legend (`b11`). The freed width also pays for §11.7's denser frequency axis, eleven octave labels where there were four. |
-| `08` d9's "five types and eight commands" | **Seven commands** — its own contract block lists seven (§9.1). |
+| `08` d9's "five types and eight commands" | **Seven commands** — its own contract block lists seven (§9.1). **Eight from [#12](https://github.com/thezic/brus-spl/issues/12) on**, and the coincidence is worth naming rather than letting a later reader take as vindication: the eighth is §7.5's `get_slot_levels`, which `08` had no notion of. |
 | `09`'s own Question, "the rolling L_eq should dominate" | **Inverted** (`09` d2) — the hero is the live level, and §11.1 states the cost. |
 | `CLAUDE.md`'s note that `src-tauri/gen/` is generated | Already fixed: `gen/schemas` is off-limits, `gen/apple/` is tracked and editable but must stay regenerable. |
 | `11` probe 2b's "the app dies" on backgrounding (§4.3) | **The process survives; the session is what stops** (`b08`) — same PID across 70 s backgrounded, `setActive` refused with `'!pla'` throughout, and recovery 3 s after returning to the foreground. Terminal before `b07`; self-healing after it. |

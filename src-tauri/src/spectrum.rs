@@ -16,6 +16,7 @@
 //! §9.5's offset row true — the window and the values shift together, so every colour is
 //! unchanged and only the legend relabels.
 
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 
 use realfft::num_complex::Complex;
@@ -300,13 +301,26 @@ impl Spectrum {
         (self.stamps[position] == slot).then(|| self.columns[position])
     }
 
+    /// The slots the ring can answer **about** at all, given the newest slot published.
+    ///
+    /// Named rather than left inline in [`Spectrum::columns_in`]'s clamp because a readout has to
+    /// tell *the ring keeps nothing for this slot* from *there was no audio here* (spec §7.5), and
+    /// [`Spectrum::column`] answers `None` to both. Inside this range a `None` is a gap; outside
+    /// it, it is the absence of a claim.
+    ///
+    /// The upper end is `now_slot` for the same reason the pull's right edge is: a slot ahead of
+    /// the present is not something the app is withholding.
+    pub fn retained(now_slot: u64) -> RangeInclusive<u64> {
+        now_slot.saturating_sub(RING_SLOTS - 1)..=now_slot
+    }
+
     /// Every real column in `first ..= last`, oldest first.
     ///
     /// **Gaps are absent rather than marked** (spec §9.2): a slot index in the range with no
     /// entry *is* the hole. Explicit `null` entries were rejected as duplicating what the
     /// indices already say, at 270 wasted entries for a 27 s hole.
     pub fn columns_in(&self, first: u64, last: u64) -> Vec<(u64, [f32; BANDS])> {
-        let first = first.max(last.saturating_sub(RING_SLOTS - 1));
+        let first = first.max(*Spectrum::retained(last).start());
         (first..=last)
             .filter_map(|slot| self.column(slot).map(|bands| (slot, bands)))
             .collect()
@@ -995,6 +1009,28 @@ mod tests {
 
         // And `columns_in` never reaches further back than the ring can honestly answer for.
         assert!(rig.s.columns_in(0, later).len() <= RING_SLOTS as usize);
+    }
+
+    /// [`Spectrum::retained`] is the bound `columns_in` clamps to, so the two cannot drift apart —
+    /// which matters because spec §7.5's readout uses it to tell an aged-out slot from a gap, and
+    /// a range one slot wider than the ring would call an evicted slot silent.
+    #[test]
+    fn the_retained_range_is_exactly_what_the_ring_can_answer_for() {
+        let now = 5_000;
+        let retained = Spectrum::retained(now);
+        assert_eq!(retained, 3_801..=5_000);
+        assert_eq!(retained.count() as u64, RING_SLOTS);
+        assert!(
+            !Spectrum::retained(now).contains(&3_800),
+            "one too far back"
+        );
+        assert!(
+            !Spectrum::retained(now).contains(&(now + 1)),
+            "a slot ahead of the present is not data being withheld"
+        );
+
+        // Early on, the ring holds everything there has ever been — including slot 0.
+        assert_eq!(Spectrum::retained(3), 0..=3);
     }
 
     #[test]

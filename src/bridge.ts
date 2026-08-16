@@ -84,6 +84,26 @@ export interface Column {
   bands: number[];
 }
 
+/**
+ * What one slot's 32 bands are, or **which kind of nothing** there is — spec §7.5's readout.
+ *
+ * Three states rather than `number[] | null`, because Rust answers `None` both for a slot that
+ * aged out of the 1200-slot ring and for a slot that was a gap, and *no data kept* and *silence*
+ * are different claims: §6.9's refusal to publish a fake quiet applies to a readout exactly as it
+ * applies to the hero number. A marker on `evicted` has lost the data it named; one on `gap` is
+ * still pointing at a real, empty moment.
+ *
+ * Unlike `Column.bands`, these are **already calibrated and rounded to 0.1 dB** — the two disagree
+ * deliberately (see `Column`). Do not add the offset on this side.
+ */
+export type SlotLevels =
+  /** 32 calibrated per-band levels, low row first — the same order as `Column.bands`. */
+  | { state: "levels"; bands: number[] }
+  /** In the ring, and empty: spec §7.3's hole, drawn as nothing in the picture too. */
+  | { state: "gap" }
+  /** Outside the ring — aged out, or ahead of the present. §7.5's marker vanishes on this. */
+  | { state: "evicted" };
+
 /** Everything the screen paints, once per 100 ms. */
 export interface Tick {
   /**
@@ -144,6 +164,27 @@ export function onTick(handler: (tick: Tick) => void): Promise<UnlistenFn> {
  */
 export function getSpectrogram(): Promise<Column[]> {
   return invoke<Column[]>("get_spectrogram");
+}
+
+/**
+ * The 32 band levels behind one slot — the eighth command, for spec §7.5's marker readout.
+ *
+ * **Called once, when the marker is placed.** The label is static after that: frequency is fixed by
+ * the row and level by the data point, so this is a per-gesture round trip and never a per-tick
+ * one. A few milliseconds against a picture the pull already lets be up to 100 ms stale.
+ *
+ * The level comes from here rather than from inverting the colour ramp off the canvas or from a
+ * ring on this side, which is what keeps §8.2 (*calibration is applied post-log, in Rust*)
+ * exception-free and §9.5 intact — the frontend still holds no history of its own.
+ *
+ * **It names a slot, not a bucket.** Where the pixel budget puts more than one slot in a column the
+ * two differ; the marker pins to the marked bucket's middle slot (§7.5), and that choice lives with
+ * the caller because the pixel budget is the frontend's fact, not Rust's.
+ *
+ * The ring is 120 s at every span, so this can answer for slots the picture is no longer showing.
+ */
+export function getSlotLevels(slot: number): Promise<SlotLevels> {
+  return invoke<SlotLevels>("get_slot_levels", { slot });
 }
 
 /**
