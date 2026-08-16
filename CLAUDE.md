@@ -80,9 +80,7 @@ Each of these was decided against an alternative that still looks reasonable fro
 Two constants are one-line judgement calls a room may disagree with, both checked on glass on
 2026-08-15: `LIVE_REFRESH_MS = 500` in `Hero.vue` (300 ms was the alternative) and the frequency
 ladder in `Spectrogram.vue` — which after #7 is a **14 px minimum pitch** rather than an
-eleven-entry list, though it still produces those eleven at 205 px. The conditions of that check
-went unrecorded, so **treat the dim-room-at-arm's-length read as still open** — a desk look is not
-the same test, and #7's own prototypes were judged on a desk too.
+eleven-entry list, though it still produces those eleven at 205 px.
 
 ### The rename
 
