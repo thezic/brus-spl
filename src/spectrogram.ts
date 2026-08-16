@@ -117,6 +117,86 @@ export function paintColumn(
   }
 }
 
+// ─── the frequency axis's density (#13, spec §7.4, extending `b15`) ─────────────────────────
+//
+// `b15` picked **eleven labels for a 205 px box** by hand — every third band, ~17 px apart — having
+// found every *second* band at ~11.4 px unreadable in a dim room. That is a judgement about a
+// **pitch**, not about a count, and the count only ever followed from the height the inline picture
+// happens to have. Expanded (§7.4) the picture is three times taller and the same judgement gives a
+// different answer, so what is kept from `b15` is the rule it was already applying: **pick the
+// densest ladder whose label pitch clears a threshold.**
+
+/**
+ * §7.1's nominal centres as the axis writes them, band 0 first — 12.5 Hz at the bottom.
+ *
+ * Strings rather than numbers because the axis is written in two registers (`630`, `6.3k`) and the
+ * switch happens at 1 kHz, where a reader's own habit switches. Here rather than in `display.ts`
+ * despite that file's *every string beside a number* rule: these are an argument to
+ * [`labelLadder`] before they are anything on screen, and the row's other spelling — §7.5's
+ * readout, which says `3.15 kHz` with the unit — is a different string for a different place.
+ */
+export const BAND_LABELS: readonly string[] = [
+  "12.5", "16", "20", "25", "31.5", "40", "50", "63",
+  "80", "100", "125", "160", "200", "250", "315", "400",
+  "500", "630", "800", "1k", "1.25k", "1.6k", "2k", "2.5k",
+  "3.15k", "4k", "5k", "6.3k", "8k", "10k", "12.5k", "16k",
+];
+
+/**
+ * The ladders the axis is allowed to use, densest first: **every band, every octave, every second
+ * octave**.
+ *
+ * The gap between 1 and 3 is deliberate, and it is `b15`'s *second* objection rather than its
+ * first. Every second band fits between them numerically and was refused on a different ground —
+ * *a 2/3-octave series nobody thinks in* — which is a property of the series, not of the pixels,
+ * so it does not become true at a taller size. What is left are three series a reader already has
+ * in their head, and they **nest**: 6 ⊂ 3 ⊂ 1, so growing the picture only ever *adds* labels and
+ * never moves one that was already there.
+ */
+export const LADDER_STEPS: readonly number[] = [1, 3, 6];
+
+/**
+ * The pitch a label needs, in CSS pixels — the one number in this rule that is a judgement.
+ *
+ * `b15` bracketed it by experiment without naming it: ~11.4 px was rejected as unreadable in a dim
+ * room at arm's length and ~17.2 px accepted, so the threshold lies in `(11.4, 17.2]`. 14 px is
+ * 1.4 × the 10 px label box — 4 px of clear space between glyph boxes.
+ *
+ * **The geometries that actually occur are invariant across most of that interval** (spec §7.4):
+ * every current iPhone lands at ≥19.5 px per band in expanded portrait and ≤12.1 px in landscape,
+ * so any threshold in `(12.1, 19.5]` produces the same ladder on every device the app runs on. The
+ * number only decides boxes this app does not produce, which is why it can be picked without
+ * another venue run.
+ */
+export const MIN_LABEL_PITCH_PX = 14;
+
+/**
+ * The rows that carry a frequency label for a plot of this height, **top first**.
+ *
+ * At `b15`'s 183 px plot this returns exactly its eleven — 16 · 31.5 · 63 · 125 · 250 · 500 · 1k ·
+ * 2k · 4k · 8k · 16k — so the inline picture is unchanged by construction rather than by agreement.
+ * Anchored at band 31 (16 kHz) downwards, which is what makes the ladders nest and what keeps the
+ * top row labelled at every density; at the densest step band 0 (12.5 Hz) picks up the label `b15`
+ * left off, and for the reason `b15` left it off — the series it belongs to is being drawn.
+ *
+ * `plotHeightPx` is the **plot's** height in CSS px, not the box's: the 20 px axis gutter carries
+ * the caption line and no band rows.
+ */
+export function labelLadder(
+  plotHeightPx: number,
+  minPitchPx: number = MIN_LABEL_PITCH_PX,
+): [number, string][] {
+  const perBand = plotHeightPx / BANDS;
+  const step =
+    LADDER_STEPS.find((candidate) => perBand * candidate >= minPitchPx) ??
+    LADDER_STEPS[LADDER_STEPS.length - 1];
+  const rows: [number, string][] = [];
+  for (let band = BANDS - 1; band >= 0; band -= step) {
+    rows.push([band, BAND_LABELS[band]]);
+  }
+  return rows;
+}
+
 /**
  * How many 100 ms slots share one pixel column — spec §7.3's *aggregate deliberately, never let
  * the resampler decimate*.
@@ -142,6 +222,34 @@ export function slotsPerBucket(spanSlots: number, widthPx: number): number {
  */
 export function bucketOf(slot: number, slotsPerBucket: number): number {
   return Math.floor(slot / slotsPerBucket);
+}
+
+/**
+ * What `Spectrogram.vue` publishes about its own layout, **in CSS pixels** — spec §7.5's *the
+ * overlay's whole coupling to the picture is one geometry object*.
+ *
+ * Anything drawn **over** the picture needs the plot rect and cannot derive it: the gutters are
+ * inside the canvas and the left one's width now depends on which labels the ladder holds. The
+ * pixel budget rides along because an overlay that names a *slot* — which §7.5's marker does, so
+ * that it survives a re-pull — has to invert the same grouping the picture drew with, and
+ * recomputing it would be a second copy of §7.3's rule.
+ *
+ * **CSS px, from the device-pixel values actually drawn.** The consumer positions DOM elements, and
+ * dividing what was drawn is the only way its rect is *the plot's* rect rather than a second
+ * rounding that lands a pixel out at `dpr = 3`.
+ */
+export interface Geometry {
+  /** The plot rect, relative to the component's own box — the frame is drawn just outside it. */
+  plotX: number;
+  plotY: number;
+  plotW: number;
+  plotH: number;
+  /** The box the component fills: `plotW` plus the gutters, `plotH` plus the axis. */
+  boxW: number;
+  boxH: number;
+  /** Spec §7.3's pixel budget, as [`slotsPerBucket`] and the column count settled it. */
+  slotsPer: number;
+  buckets: number;
 }
 
 /** dB → linear power. Aggregation is in energy; averaging the logs would not be the mean. */

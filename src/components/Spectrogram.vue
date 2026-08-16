@@ -52,6 +52,8 @@ import {
   BANDS,
   bucketOf,
   decibels,
+  type Geometry,
+  labelLadder,
   paintColumn,
   power,
   slotsPerBucket,
@@ -62,9 +64,32 @@ const props = defineProps<{
   tick: Tick | null;
   /** The span and the caption's unit — all the chrome reads. `null` until the first tick. */
   settings: Settings | null;
+  /**
+   * The box's height in CSS pixels, gutters included — [`BOX_H`] inline (spec §11.7) and whatever
+   * the screen affords when expanded (spec §7.4). **The only geometry input**: the plot's height,
+   * the label ladder and the gutter's width all follow from it and from the measured width.
+   */
+  height?: number;
 }>();
 
-// ─── geometry, in CSS pixels (spec §11.7) ───────────────────────────────────────────────────
+/**
+ * The plot rect and pixel budget, in CSS px, emitted **whenever [`configure`] succeeds** — spec
+ * §7.5.
+ *
+ * An event rather than an exposed method because it changes exactly when `configure` runs and a
+ * consumer must not sample it at any other moment: between a reconfigure and the pull that follows,
+ * the canvas is empty and the old rect is a lie. Nothing in this component consumes it — it is the
+ * seam the expanded view (#14) and the marker overlay (#15) are built on, and it is here rather
+ * than there because the gutter's width is now a measurement only this component makes.
+ */
+const emit = defineEmits<{ geometry: [Geometry] }>();
+
+// ─── geometry, in CSS pixels (spec §11.7, and §7.4 for what is no longer constant) ──────────
+//
+// **Three of these were constants and are now inputs** (#13): the box's height is a prop, the
+// label ladder is derived from it, and the left gutter is measured from the ladder. Nothing about
+// the inline picture moves — at 205 px each rule reproduces the value §11.7 records — but the
+// component no longer has one geometry, so it publishes the one it has (spec §7.5).
 //
 // **Two gutters, not three** (`b15`). 40 px left for the frequency labels and 20 px bottom for the
 // time axis and the caption line. The 58 px right gutter held the colour legend and **the legend
@@ -77,48 +102,50 @@ const props = defineProps<{
 // named those levels — which is why `dBFS/band` stays on the caption line below.
 
 const BOX_H = 205;
+/** The **floor**, not the value: the gutter widens for a wider label and never narrows below this. */
 const GUTTER_LEFT = 40;
 const GUTTER_RIGHT = 2;
 const AXIS_H = 20;
-const PLOT_H = BOX_H - AXIS_H;
 
 /** Label size, and the mono stack `:root` sets — canvas takes a font string, not a CSS variable. */
 const LABEL_PT = 10;
 const MONO = 'ui-monospace, SFMono-Regular, Menlo, monospace';
 
 /**
- * The rows that get a frequency label, top first — **the octave ladder**, every third band.
+ * What the gutter holds beside the label itself: the gap from the label's right edge to the plot,
+ * the tick drawn inside that gap, and the clear space left of the longest label.
  *
- * `b13` read the four-label axis as *not granular enough*, and eleven is the density the geometry
- * actually affords: at ~5.7 px per band every third row is ~17 px apart, comfortably over the
- * 10 px the label is tall, and the widest string (`31.5`, 24 px) clears the 33 px the gutter
- * leaves to the left of the tick. Every *second* band would be 16 labels at ~11.4 px pitch —
- * under 2 px of clear space between glyph boxes, which is not a thing to read in a dim room at
- * arm's length, and it is a 2/3-octave series nobody thinks in.
- *
- * **Every third band is the octave ladder** — 16 · 31.5 · 63 · 125 · 250 · 500 · 1k · 2k · 4k ·
- * 8k · 16k — so the density is not merely what fits, it is the series a reader already has in
- * their head. The old four are a subset of it, so nothing moved; nine were added between them.
- *
- * Values are §7.1's nominal centres and the band indices are the rows they name — band 0 is
- * 12.5 Hz at the bottom. **The bottom row is not labelled because the ladder starts at 16**, and
- * for no better reason than that: §13.12 puts 12.5, 16, 20 *and* 25 Hz below one FFT bin at
- * N=8192, so honesty about bin width would silence four rows rather than one and is not what
- * picks the bottom label.
+ * Named because the gutter is now **measured** against them (spec §7.4) rather than fixed at 40.
+ * The gap was a literal in [`drawChrome`] and reappeared inside a `+ 11` in [`measuredGutter`] —
+ * two places to change and one of them silent, since widening the gap alone would clip the very
+ * labels the gutter was measured for.
  */
-const FREQUENCIES: readonly (readonly [number, string])[] = [
-  [31, "16k"],
-  [28, "8k"],
-  [25, "4k"],
-  [22, "2k"],
-  [19, "1k"],
-  [16, "500"],
-  [13, "250"],
-  [10, "125"],
-  [7, "63"],
-  [4, "31.5"],
-  [1, "16"],
-];
+const LABEL_GAP = 7;
+const TICK_W = 4;
+const GUTTER_MARGIN = 4;
+
+/**
+ * The box and the plot inside it, in CSS px — both a function of the `height` prop (spec §7.4).
+ *
+ * Floored at an axis plus one device row per band: below that the rows stop being rows, and the
+ * clamp keeps the element's own height agreeing with the canvas that is drawn into it.
+ */
+const boxH = computed(() => Math.max(AXIS_H + BANDS, props.height ?? BOX_H));
+const plotHCss = computed(() => boxH.value - AXIS_H);
+
+/**
+ * The rows that get a frequency label, top first — **derived from the plot's height** by
+ * [`labelLadder`](../spectrogram.ts), recomputed in [`configure`], which is the only place that
+ * height can change.
+ *
+ * `b13` read the four-label axis as *not granular enough* and `b15` answered it with eleven, chosen
+ * by hand for a 205 px box: the octave ladder, every third band, ~17 px apart, having measured
+ * every *second* band at ~11.4 px as unreadable in a dim room at arm's length. What that fixed is a
+ * **pitch**, and the count only followed from the one height the picture then had — so #13 keeps
+ * the judgement and lets the count follow the pixels (spec §7.4). At 205 px it is still exactly
+ * `b15`'s eleven, by construction rather than by agreement.
+ */
+let ladder: [number, string][] = labelLadder(BOX_H - AXIS_H);
 
 const frame = ref<HTMLDivElement>();
 const surface = ref<HTMLCanvasElement>();
@@ -142,6 +169,8 @@ let plotH = 0;
 /** Slots per drawn column, and drawn columns across the picture — spec §7.3's pixel budget. */
 let slotsPer = 1;
 let buckets = 1;
+/** The measured left gutter in CSS px — [`GUTTER_LEFT`] unless a wider label needs more. */
+let gutterLeft = GUTTER_LEFT;
 let palette = { line: "#26262e", dim: "#8e8e96", faint: "#70707a" };
 
 /**
@@ -195,6 +224,30 @@ function ink(name: string, fallback: string): string {
 }
 
 /**
+ * How wide the left gutter has to be for the ladder it is about to hold, in CSS pixels.
+ *
+ * **40 px is a floor and not a value** (spec §7.4). §11.7's figure was measured against `b15`'s
+ * widest string — `31.5`, 24 px at 10 px mono — plus the gap the tick sits in; a denser ladder
+ * brings five-character strings (`3.15k`, `12.5k`), so the gutter is measured rather than assumed.
+ * It never narrows below 40: the inline picture keeps the geometry §11.7 records, and a picture
+ * whose left edge moved when a label got shorter would be a picture that jitters.
+ *
+ * The widest label plus [`LABEL_GAP`] is what it takes for nothing to *clip*; [`GUTTER_MARGIN`] is
+ * on top of that so the longest label is not flush against the canvas's own left edge.
+ *
+ * Measured in device pixels and divided back, because that is the font the labels are actually
+ * drawn in.
+ */
+function measuredGutter(g: CanvasRenderingContext2D): number {
+  g.font = `${Math.round(LABEL_PT * dpr)}px ${MONO}`;
+  let widest = 0;
+  for (const [, name] of ladder) {
+    widest = Math.max(widest, g.measureText(name).width / dpr);
+  }
+  return Math.max(GUTTER_LEFT, Math.ceil(widest) + LABEL_GAP + GUTTER_MARGIN);
+}
+
+/**
  * Sizes both canvases for the current width and span, and redraws the chrome. **Clears the
  * picture** — every caller follows it with a pull.
  *
@@ -216,15 +269,21 @@ function configure(): boolean {
   const px = (css: number) => Math.round(css * dpr);
 
   canvas.width = px(width);
-  canvas.height = px(BOX_H);
+  canvas.height = px(boxH.value);
   ctx = canvas.getContext("2d");
+
+  // **The height picks the ladder, and the ladder picks the gutter** — in that order, and there is
+  // no circularity in it: the plot's height depends only on the box, the labels only on that
+  // height, and the gutter — the one thing that depends on the labels — takes width, not height.
+  plotH = Math.max(BANDS, px(plotHCss.value) - 2);
+  ladder = labelLadder(plotH / dpr);
+  gutterLeft = ctx ? measuredGutter(ctx) : GUTTER_LEFT;
 
   // One device pixel of inset all round, so the frame drawn just outside the plot survives the
   // `clearRect` every blit does inside it.
-  plotX = px(GUTTER_LEFT);
+  plotX = px(gutterLeft);
   plotY = 1;
-  plotW = Math.max(1, px(width - GUTTER_LEFT - GUTTER_RIGHT) - 1);
-  plotH = Math.max(BANDS, px(PLOT_H) - 2);
+  plotW = Math.max(1, px(width - gutterLeft - GUTTER_RIGHT) - 1);
 
   // **The pixel budget** (spec §7.3): group slots until the grouped picture fits the pixels it
   // has, so the magnification below can never drop a column. 600 slots into 350 px is two slots
@@ -247,6 +306,18 @@ function configure(): boolean {
   };
 
   drawChrome();
+  // Derived from the device-pixel values just drawn rather than recomputed from the CSS ones, so
+  // an overlay's rect *is* the plot's rect and not a second rounding of it (spec §7.5).
+  emit("geometry", {
+    plotX: plotX / dpr,
+    plotY: plotY / dpr,
+    plotW: plotW / dpr,
+    plotH: plotH / dpr,
+    boxW: width,
+    boxH: boxH.value,
+    slotsPer,
+    buckets,
+  });
   return true;
 }
 
@@ -282,7 +353,7 @@ function drawChrome(): void {
   // and that is the only rounding in the path.
   g.textAlign = "right";
   g.fillStyle = palette.dim;
-  for (const [band, name] of FREQUENCIES) {
+  for (const [band, name] of ladder) {
     const centre = plotY + (plotH * (BANDS - 1 - band + 0.5)) / BANDS;
     // The tick sits on the row; the **label** is clamped to stay inside the picture's height. The
     // top row's centre is under 3 px from the edge, and an unclamped baseline there loses the top
@@ -292,8 +363,8 @@ function drawChrome(): void {
       Math.max(centre, plotY + px(LABEL_PT / 2)),
       plotY + plotH - px(LABEL_PT / 2),
     );
-    g.fillText(name, plotX - px(7), text);
-    g.fillRect(plotX - px(4), Math.round(centre), px(4), 1);
+    g.fillText(name, plotX - px(LABEL_GAP), text);
+    g.fillRect(plotX - px(TICK_W), Math.round(centre), px(TICK_W), 1);
   }
 
   // **No colour legend** (`b15`). Nothing is drawn to the right of the plot at all — the ramp
@@ -316,7 +387,7 @@ function drawChrome(): void {
   // the 800×600 wide reflow alike. It only closes up under a ~230 px canvas — a 667 px-wide
   // landscape — which the three-anchor version had already run out of room in.
   const settings = props.settings;
-  const baseline = px(PLOT_H) + px(AXIS_H / 2) + 1;
+  const baseline = px(plotHCss.value) + px(AXIS_H / 2) + 1;
   g.textAlign = "left";
   g.fillStyle = palette.faint;
   if (settings) {
@@ -537,6 +608,11 @@ watch(
  * the chrome, and keeping it in the key would redraw and re-blit the whole canvas per tap for
  * nothing. `unit` stays and is what still needs the redraw — it flips `dBFS/band` to `dB/band` the
  * first time the app is calibrated.
+ *
+ * **The height and the ladder are not in here and must not be** (#13). They change the *geometry*,
+ * not just what the chrome says, so they take [`reconfigure`]'s path — re-size, re-measure,
+ * redraw, re-pull — of which `drawChrome` is one step. Adding them here would redraw the chrome a
+ * second time onto a canvas that was about to be rebuilt anyway.
  */
 function chromeKey(settings: Settings | null): string | null {
   return settings ? `${settings.window_s}|${settings.unit}` : null;
@@ -579,10 +655,27 @@ function onResize(): void {
   const width = Math.round(host.clientWidth);
   const ratio = Math.min(3, Math.max(1, window.devicePixelRatio || 1));
   if (width === measuredWidth && ratio === dpr) return;
+  reconfigure();
+}
+
+/** Re-measure, redraw the chrome and re-pull the history. Shared by the two things that move it. */
+function reconfigure(): void {
   if (!configure()) return;
   window.clearTimeout(resizeTimer);
   resizeTimer = window.setTimeout(() => void pull(), 120);
 }
+
+/**
+ * **A height change needs its own watcher**, because [`onResize`] deliberately ignores it: that
+ * path keys on the width and the device ratio, which are the only things the *pixel budget*
+ * depends on. The budget is unchanged here and every band row still moves, so the canvas has to be
+ * re-sized and the history redrawn from the columns rather than stretched — spec §9.5 lists
+ * *canvas resize, orientation change* as a re-pull, and expanding (§7.4) is both.
+ *
+ * Through the same debounce as a resize, which is what stops expanding — a height change and a
+ * width change in one frame — from spending two of the design's one bulk payload.
+ */
+watch(boxH, () => reconfigure());
 
 onMounted(() => {
   const host = frame.value;
@@ -604,17 +697,25 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div ref="frame" class="picture" role="img" :aria-label="description">
+  <div
+    ref="frame"
+    class="picture"
+    role="img"
+    :aria-label="description"
+    :style="{ height: `${boxH}px` }"
+  >
     <canvas ref="surface" class="surface"></canvas>
   </div>
 </template>
 
 <style scoped>
-/* ~205 px tall, width whatever is left (spec §11.7). The gutters are inside the canvas rather than
-   in CSS, because the labels have to line up with band rows the canvas alone knows the size of. */
+/* ~205 px tall inline (spec §11.7) and taller when expanded (§7.4), so the height is an inline
+   style from the prop rather than a rule here: the canvas is sized in the same pass that picks the
+   ladder, and nothing in CSS can tell it what that pass chose. Width is whatever is left. The
+   gutters are inside the canvas rather than in CSS, because the labels have to line up with band
+   rows the canvas alone knows the size of. */
 .picture {
   width: 100%;
-  height: 205px;
 }
 
 .surface {
