@@ -36,6 +36,7 @@ import { getSlotLevels, type Unit } from "../bridge";
 import { markerFrequency, markerLevel } from "../display";
 import {
   bandAt,
+  clampToPlot,
   columnX,
   insidePlot,
   placeChip,
@@ -47,16 +48,29 @@ import {
 import type { Geometry } from "../spectrogram";
 
 const props = defineProps<{
-  /** The plot rect and pixel budget in CSS px. `null` until the picture has measured itself. */
-  geometry: Geometry | null;
+  /**
+   * The plot rect and pixel budget in CSS px.
+   *
+   * **Not nullable, and the parent is what makes that true**: it mounts this only once the picture
+   * has published a rect, and *unmounts* it again whenever that rect stops being the true one — a
+   * height change makes the last rect a lie by hundreds of pixels, so there is no state in which a
+   * marker overlay should be on screen holding one. The same gate `ExpandedChrome` is behind.
+   */
+  geometry: Geometry;
   /** The right edge, from the last tick — the marker's `x` is re-derived from it every tick. */
   nowSlot: number;
   /**
-   * The unit a level fetched *now* would be in, from the tick (spec §9.1).
+   * The unit a level fetched *now* would be in.
    *
    * Read at the moment the readout is filled in and then **stored with the value**, never again:
    * §7.5's label is static, and calibrating after a marker is placed must not relabel a raw `dBFS`
    * number as `dB`.
+   *
+   * It has to come from the settings, since `get_slot_levels` answers with bands alone (§9.1) — and
+   * it is not a tick behind, which is what would make that a real risk: the calibration commands
+   * return the new settings and `App.vue` paints from that answer rather than waiting for the next
+   * tick (§9.2). The sheet is also modal over the picture, so no marker can be placed during the
+   * one gesture that moves the unit.
    */
   unit: Unit;
 }>();
@@ -89,12 +103,11 @@ let placed: { slot: number; band: number } | null = null;
 
 /** The crosshair's intersection in the picture box, or `null` when there is nothing to draw. */
 const point = computed(() => {
-  const g = props.geometry;
   const m = marker.value;
-  if (!g || !m) return null;
-  const x = columnX(g, props.nowSlot, m.slot);
+  if (!m) return null;
+  const x = columnX(props.geometry, props.nowSlot, m.slot);
   if (x === null) return null;
-  return { x, y: rowCentre(g, m.band) };
+  return { x, y: rowCentre(props.geometry, m.band) };
 });
 
 /**
@@ -104,18 +117,18 @@ const point = computed(() => {
  * The state is **dropped, not hidden**: a marker merely hidden would reappear if the span were later
  * widened, pointing at a moment the reader has no way to connect to what they marked.
  *
- * Asked as *is it off the picture* rather than *is there a point* on purpose, and the difference is
- * the whole reason this is not a watcher on [`point`]. `point` is also `null` whenever the geometry
- * is — which is exactly what expanding and rotating do for a frame, while the parent waits for the
- * picture to republish its rect — and dropping the marker there would break the same sentence of
- * §7.5 that this rule comes from. `immediate`, because a marker can be off the picture already when
- * this component mounts: it drifted while the view was inline, where nothing was watching.
+ * Asked as *is it off the picture* rather than as a watcher on [`point`], which is also `null` when
+ * there is simply no marker: the two must not share an answer, because *there is nothing to draw*
+ * and *what you marked is gone* are a no-op and a state change.
+ *
+ * `immediate`, because a marker can be off the picture already when this component mounts. It
+ * drifts while the view is inline too — the data moves whether or not anything is drawing it — and
+ * nothing is watching there.
  */
 const offPicture = computed(() => {
-  const g = props.geometry;
   const m = marker.value;
-  if (!g || !m) return false;
-  return columnX(g, props.nowSlot, m.slot) === null;
+  if (!m) return false;
+  return columnX(props.geometry, props.nowSlot, m.slot) === null;
 });
 
 watch(
@@ -134,6 +147,16 @@ const frequency = computed(() =>
 const level = computed(() =>
   marker.value ? markerLevel(marker.value.level) : "",
 );
+
+/**
+ * Whether the readout has a level half at all — **asked of the state, not of the string.**
+ *
+ * The one state with nothing to say is `pending`, which lasts as long as a drag: the level belongs
+ * to where the marker *lands*, so there is nothing honest to show while it is still moving. Keying
+ * the separator and the value off an empty string instead would make a display string decide
+ * layout, and would hide any future state that happened to format as blank.
+ */
+const hasLevel = computed(() => marker.value?.level.state !== "pending");
 
 /** The chip's measured size — [`placeChip`] cannot clamp a box it has not been given. */
 const chipW = ref(0);
@@ -154,10 +177,9 @@ watch(chip, (element) => {
 onUnmounted(() => observer?.disconnect());
 
 const chipBox = computed(() => {
-  const g = props.geometry;
   const p = point.value;
-  if (!g || !p || chipW.value === 0) return null;
-  return placeChip(g, p.x, p.y, chipW.value, chipH.value);
+  if (!p || chipW.value === 0) return null;
+  return placeChip(props.geometry, p.x, p.y, chipW.value, chipH.value);
 });
 
 // ─── the gesture ────────────────────────────────────────────────────────────────────────────
@@ -170,6 +192,7 @@ const chipBox = computed(() => {
 /** Only the newest gesture may fill in a readout — a fast re-place starts a second round trip. */
 let pending = 0;
 
+/** A pointer event in the picture box's own coordinates — `root` is mounted, or no handler ran. */
 function localPoint(event: PointerEvent): { x: number; y: number } {
   const rect = root.value!.getBoundingClientRect();
   return { x: event.clientX - rect.left, y: event.clientY - rect.top };
@@ -186,12 +209,9 @@ function localPoint(event: PointerEvent): { x: number; y: number } {
  */
 function place(x: number, y: number, initial: boolean): void {
   const g = props.geometry;
-  if (!g) return;
-  const cx = Math.min(g.plotX + g.plotW, Math.max(g.plotX, x));
-  const cy = Math.min(g.plotY + g.plotH, Math.max(g.plotY, y));
-
-  const slot = slotAt(g, props.nowSlot, cx);
-  const band = bandAt(g, cy);
+  const at = clampToPlot(g, x, y);
+  const slot = slotAt(g, props.nowSlot, at.x);
+  const band = bandAt(g, at.y);
   // A move within the same cell is not a move: it would re-render the chip at pointer rate, and
   // — since the press is what re-asks for a level — must not be mistaken for a fresh placement.
   if (!initial && placed && placed.slot === slot && placed.band === band) return;
@@ -240,7 +260,6 @@ async function fillLevel(): Promise<void> {
 
 function onDown(event: PointerEvent): void {
   const g = props.geometry;
-  if (!g) return;
   const { x, y } = localPoint(event);
   // **A press in a gutter places nothing** — the gutters are not the picture, and an existing
   // marker keeps what it had. A drag that later slides into one clamps and keeps going, because
@@ -287,7 +306,7 @@ function drop(): void {
     @pointerup="onUp"
     @pointercancel="onUp"
   >
-    <template v-if="geometry && point">
+    <template v-if="point">
       <!-- **A full crosshair** (spec §7.5): the row runs the whole plot so it can be sighted along
            to the frequency gutter, which is the reading the marker exists for, and the column does
            the same for the moment. **No halo** — the accent is chosen to survive inferno on its own,
@@ -325,8 +344,8 @@ function drop(): void {
         <span class="frequency">{{ frequency }}</span>
         <!-- The same separator the caption line 20 px below uses — `−60s · unweighted · dB/band`
              — so two facts on one line read the way they do everywhere else on this screen. -->
-        <span v-if="level" class="separator" aria-hidden="true">·</span>
-        <span v-if="level" class="level">{{ level }}</span>
+        <span v-if="hasLevel" class="separator" aria-hidden="true">·</span>
+        <span v-if="hasLevel" class="level">{{ level }}</span>
         <!-- **The only dismissal `drag` has**, and spec §15 records its size as open: 12 px of
              glyph is fine under a mouse and is not obviously a tap target. Left as specified for
              the device check rather than grown on the desk. -->
@@ -377,6 +396,12 @@ function drop(): void {
   transform: translateX(-0.5px);
 }
 
+/* The ring is the prototype's and is kept as it was judged there. **It is the one part of the
+   marker that is not bounded by the plot**: on the leftmost column ~7 px of it sits over the
+   frequency gutter, and in landscape, where a band is ~12 px, ~2 px of it clears the top frame.
+   Left rather than clipped — a clipped ring is a half-moon, which reads as a rendering fault where
+   an overhanging one reads as a marker at the edge — and the left-edge case lasts a tick or two
+   before §7.5 drops the marker anyway. Seen, not overlooked. */
 .ring {
   width: 16px;
   height: 16px;

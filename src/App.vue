@@ -128,18 +128,6 @@ watch(pictureHeight, () => {
 });
 
 /**
- * The expand button's **offsets** from the plot's top-right corner. Its size and its plate are
- * `.plot-corner`'s, shared with the two the expanded view draws.
- *
- * Positioned from the published rect rather than from the picture's box, for the reason §7.4 gives
- * the expanded chrome: the gutters are inside the canvas and nothing out here may assume their
- * width. Anchored by `right` rather than by `left`, so the button's width stays in CSS and is not
- * arithmetic here as well.
- *
- * It covers the newest few seconds of the top bands — the quiet corner in a real room, and data
- * rather than a label, which is the trade §7.4 already took for close and `⋯`.
- */
-/**
  * The one marker (spec §7.5, #15) — **held here rather than in the overlay that draws it.**
  *
  * `PictureMarker` is mounted only while the picture is expanded, so state kept inside it would be
@@ -153,6 +141,18 @@ watch(pictureHeight, () => {
  */
 const marker = ref<Marker | null>(null);
 
+/**
+ * The expand button's **offsets** from the plot's top-right corner. Its size and its plate are
+ * `.plot-corner`'s, shared with the two the expanded view draws.
+ *
+ * Positioned from the published rect rather than from the picture's box, for the reason §7.4 gives
+ * the expanded chrome: the gutters are inside the canvas and nothing out here may assume their
+ * width. Anchored by `right` rather than by `left`, so the button's width stays in CSS and is not
+ * arithmetic here as well.
+ *
+ * It covers the newest few seconds of the top bands — the quiet corner in a real room, and data
+ * rather than a label, which is the trade §7.4 already took for close and `⋯`.
+ */
 const EXPAND_PAD = 6;
 const expandStyle = computed(() => {
   const rect = plot.value;

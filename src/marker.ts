@@ -59,7 +59,7 @@ export type MarkerLevel =
   | { state: "failed" };
 
 /** A row index clamped into the picture — a drag may leave the plot, a band may not. */
-export function clampBand(band: number): number {
+function clampBand(band: number): number {
   return Math.min(BANDS - 1, Math.max(0, Math.round(band)));
 }
 
@@ -93,7 +93,7 @@ function rightBucket(g: Geometry, nowSlot: number): number {
  * never drawn and which Rust correctly answers `outside` for — so the marker would vanish the
  * instant it was placed.
  */
-export function bucketAt(g: Geometry, nowSlot: number, x: number): number {
+function bucketAt(g: Geometry, nowSlot: number, x: number): number {
   const raw = Math.floor(((x - g.plotX) / g.plotW) * g.buckets);
   const fromLeft = Math.min(g.buckets - 1, Math.max(0, raw));
   return rightBucket(g, nowSlot) - (g.buckets - 1 - fromLeft);
@@ -124,10 +124,13 @@ export function slotAt(g: Geometry, nowSlot: number, x: number): number {
  * Where a pinned slot is drawn **now**, as an `x` in the picture box — the centre of its column.
  *
  * `null` once the slot has scrolled off the left edge, which is spec §7.5's *vanishes at the left
- * edge*: the caller drops the marker rather than hiding it. Also `null` to the right of the edge,
- * which a marker cannot normally reach — [`bucketAt`] clamps — but a shrinking span can leave a
- * slot briefly ahead of the picture's own right edge between a reconfigure and the tick that
- * follows it.
+ * edge*: the caller drops the marker rather than hiding it.
+ *
+ * It answers `null` past the **right** edge as well, and that is not a second vanishing rule — it
+ * is unreachable, and deliberately so. [`slotAt`] clamps to `now` and `now_slot` only advances, so
+ * no marker is ever ahead of the present; a caller that dropped a marker for this would be dropping
+ * it for a case §7.5 does not sanction. The bound is here because inverting a grouping without one
+ * indexes outside the picture, not because the caller is expected to meet it.
  */
 export function columnX(g: Geometry, nowSlot: number, slot: number): number | null {
   const fromLeft =
@@ -146,9 +149,24 @@ export function insidePlot(g: Geometry, x: number, y: number): boolean {
   );
 }
 
+/**
+ * The nearest point inside the plot — what a drag that has slid into a gutter is pointing at.
+ *
+ * [`bucketAt`] and [`bandAt`] each clamp their own answer, so this changes no result today. It is
+ * here rather than at the call site because it is picture geometry, which this file owns, and
+ * because *the drag keeps tracking past the edge* is a decision of §7.5's rather than a side effect
+ * of two clamps that exist for their own reasons.
+ */
+export function clampToPlot(g: Geometry, x: number, y: number): { x: number; y: number } {
+  return {
+    x: clamp(x, g.plotX, g.plotX + g.plotW),
+    y: clamp(y, g.plotY, g.plotY + g.plotH),
+  };
+}
+
 /** The gap from the marker to the chip, and the chip's clearance from the plot edges, in CSS px. */
-export const CHIP_GAP = 12;
-export const CHIP_PAD = 4;
+const CHIP_GAP = 12;
+const CHIP_PAD = 4;
 
 /**
  * Where the label sits: **beside the marker, flipped to its left near the right edge, and clamped
