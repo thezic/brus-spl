@@ -39,7 +39,6 @@ import {
   columnX,
   insidePlot,
   placeChip,
-  rightBucketOf,
   rowCentre,
   slotAt,
   type Marker,
@@ -74,18 +73,26 @@ const root = ref<HTMLDivElement>();
 const chip = ref<HTMLDivElement>();
 let dragging = false;
 
-// ─── where it is drawn now ──────────────────────────────────────────────────────────────────
+/**
+ * What the finger has placed, **read back synchronously** — the gesture's own copy of the two
+ * numbers in [`marker`].
+ *
+ * Not a duplicate model, and not optional. `defineModel` with a `v-model` bound above it does *not*
+ * write its own ref: the setter only emits, and the value returns as a prop when the parent
+ * re-renders. So inside one pointer event `marker.value` is still the previous marker, and a
+ * gesture that reads it back to decide anything — did the press place something, which slot did the
+ * release land on — decides it a flush late. Every such question is asked of this instead.
+ */
+let placed: { slot: number; band: number } | null = null;
 
-const rightBucket = computed(() =>
-  props.geometry ? rightBucketOf(props.geometry, props.nowSlot) : 0,
-);
+// ─── where it is drawn now ──────────────────────────────────────────────────────────────────
 
 /** The crosshair's intersection in the picture box, or `null` when there is nothing to draw. */
 const point = computed(() => {
   const g = props.geometry;
   const m = marker.value;
   if (!g || !m) return null;
-  const x = columnX(g, rightBucket.value, m.slot);
+  const x = columnX(g, props.nowSlot, m.slot);
   if (x === null) return null;
   return { x, y: rowCentre(g, m.band) };
 });
@@ -108,13 +115,13 @@ const offPicture = computed(() => {
   const g = props.geometry;
   const m = marker.value;
   if (!g || !m) return false;
-  return columnX(g, rightBucket.value, m.slot) === null;
+  return columnX(g, props.nowSlot, m.slot) === null;
 });
 
 watch(
   offPicture,
   (off) => {
-    if (off && !dragging) marker.value = null;
+    if (off && !dragging) drop();
   },
   { immediate: true },
 );
@@ -169,26 +176,27 @@ function localPoint(event: PointerEvent): { x: number; y: number } {
 }
 
 /**
- * Place or move the marker.
+ * Place or move the marker. The point is clamped into the plot, because a drag that slides into a
+ * gutter has to keep tracking — lifting a finger to recover would be worse. Whether the *press*
+ * was allowed to start at all is [`onDown`]'s question.
  *
- * `initial` is the difference between the press that starts a gesture and the moves that follow: a
- * press in a gutter places nothing, because the gutters are not the picture, while a drag that
- * slides into one clamps and keeps going — lifting a finger to recover would be worse. It is also
- * what makes a second press on an unchanged `(slot, band)` re-ask for the level rather than being
- * skipped as a no-op move, which is the only way to retry a failed round trip.
+ * `initial` marks the press that starts a gesture, and it is what lets a second press on an
+ * unchanged `(slot, band)` re-ask for the level: as a move it would be skipped as a no-op, and that
+ * skip is the only thing standing between a failed round trip and no way to retry it.
  */
 function place(x: number, y: number, initial: boolean): void {
   const g = props.geometry;
   if (!g) return;
-  if (initial && !insidePlot(g, x, y)) return;
   const cx = Math.min(g.plotX + g.plotW, Math.max(g.plotX, x));
   const cy = Math.min(g.plotY + g.plotH, Math.max(g.plotY, y));
 
-  const slot = slotAt(g, rightBucket.value, cx);
+  const slot = slotAt(g, props.nowSlot, cx);
   const band = bandAt(g, cy);
-  const current = marker.value;
-  if (!initial && current && current.slot === slot && current.band === band) return;
+  // A move within the same cell is not a move: it would re-render the chip at pointer rate, and
+  // — since the press is what re-asks for a level — must not be mistaken for a fresh placement.
+  if (!initial && placed && placed.slot === slot && placed.band === band) return;
 
+  placed = { slot, band };
   marker.value = { slot, band, level: { state: "pending" } };
 }
 
@@ -201,15 +209,15 @@ function place(x: number, y: number, initial: boolean): void {
  * and §9.5 intact.
  */
 async function fillLevel(): Promise<void> {
-  const placed = marker.value;
-  if (!placed) return;
+  const asked = placed;
+  if (!asked) return;
   const token = ++pending;
 
   let level: MarkerLevel;
   try {
-    const answer = await getSlotLevels(placed.slot);
+    const answer = await getSlotLevels(asked.slot);
     if (answer.state === "levels") {
-      const value = answer.bands[placed.band];
+      const value = answer.bands[asked.band];
       // The bridge is hand-written, so a renamed or reordered field arrives as `undefined` rather
       // than as a compile error (`src/bridge.ts`). A readout is a number a reader trusts, so an
       // unusable answer says so instead of printing `NaN dB/band`.
@@ -226,20 +234,19 @@ async function fillLevel(): Promise<void> {
   }
 
   // Superseded, or the marker has since been moved, dismissed or scrolled off the picture.
-  const still = marker.value;
-  if (token !== pending || !still || still.slot !== placed.slot || still.band !== placed.band) {
-    return;
-  }
-  marker.value = { ...still, level };
+  if (token !== pending || placed !== asked) return;
+  marker.value = { ...asked, level };
 }
 
 function onDown(event: PointerEvent): void {
-  if (!props.geometry) return;
+  const g = props.geometry;
+  if (!g) return;
   const { x, y } = localPoint(event);
-  const before = marker.value;
+  // **A press in a gutter places nothing** — the gutters are not the picture, and an existing
+  // marker keeps what it had. A drag that later slides into one clamps and keeps going, because
+  // lifting a finger to recover would be worse.
+  if (!insidePlot(g, x, y)) return;
   place(x, y, true);
-  // Nothing was placed — the press was in a gutter, and an existing marker keeps what it had.
-  if (marker.value === before) return;
   dragging = true;
   // Capture so a drag that leaves the box keeps arriving. Guarded because a synthetic pointer has
   // no active pointer to capture and throws.
@@ -263,10 +270,11 @@ function onUp(): void {
   void fillLevel();
 }
 
-function clear(): void {
-  marker.value = null;
-  // Nothing in flight may fill in a readout for a marker that is gone.
+/** The `✕`, and the left edge. Nothing in flight may fill in a readout for a marker that is gone. */
+function drop(): void {
+  placed = null;
   pending += 1;
+  marker.value = null;
 }
 </script>
 
@@ -315,11 +323,14 @@ function clear(): void {
         @pointerdown.stop
       >
         <span class="frequency">{{ frequency }}</span>
+        <!-- The same separator the caption line 20 px below uses — `−60s · unweighted · dB/band`
+             — so two facts on one line read the way they do everywhere else on this screen. -->
+        <span v-if="level" class="separator" aria-hidden="true">·</span>
         <span v-if="level" class="level">{{ level }}</span>
         <!-- **The only dismissal `drag` has**, and spec §15 records its size as open: 12 px of
              glyph is fine under a mouse and is not obviously a tap target. Left as specified for
              the device check rather than grown on the desk. -->
-        <button type="button" class="dismiss" aria-label="Remove the marker" @click="clear">
+        <button type="button" class="dismiss" aria-label="Remove the marker" @click="drop">
           ✕
         </button>
       </div>
@@ -378,7 +389,8 @@ function clear(): void {
   position: absolute;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  /* Tight, because there is a `·` between the two facts: this is the space either side of it. */
+  gap: 0.25rem;
   padding: 0.2rem 0.4rem;
   font-family: var(--mono);
   font-size: 12px;
@@ -395,12 +407,16 @@ function clear(): void {
   border-radius: 4px;
 }
 
+.separator,
 .level {
   color: var(--ink-dim);
 }
 
 .dismiss {
   all: unset;
+  /* Its own clearance: the tight gap above is for the `·`, and the one target on the chip should
+     not inherit it. §15 records the size of this glyph as still open. */
+  margin-left: 0.25rem;
   padding: 0 0.15rem;
   color: var(--ink-dim);
   cursor: pointer;

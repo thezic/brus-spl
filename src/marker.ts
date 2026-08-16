@@ -80,18 +80,23 @@ export function rowCentre(g: Geometry, band: number): number {
   return g.plotY + (g.plotH * (BANDS - 1 - band + 0.5)) / BANDS;
 }
 
+/** The bucket at the right edge — the same derivation `Spectrogram.vue`'s `advance` makes. */
+function rightBucket(g: Geometry, nowSlot: number): number {
+  return Math.floor(nowSlot / g.slotsPer);
+}
+
 /**
- * The absolute **bucket** an `x` in the picture box names, given the bucket at the right edge.
+ * The absolute **bucket** an `x` in the picture box names.
  *
  * Clamped to the drawn columns at both ends: the plot's right edge is a legal place to end a drag
  * and an unclamped `floor` puts it one bucket *past* the present, which is a slot the picture has
  * never drawn and which Rust correctly answers `outside` for — so the marker would vanish the
  * instant it was placed.
  */
-export function bucketAt(g: Geometry, rightBucket: number, x: number): number {
+export function bucketAt(g: Geometry, nowSlot: number, x: number): number {
   const raw = Math.floor(((x - g.plotX) / g.plotW) * g.buckets);
   const fromLeft = Math.min(g.buckets - 1, Math.max(0, raw));
-  return rightBucket - (g.buckets - 1 - fromLeft);
+  return rightBucket(g, nowSlot) - (g.buckets - 1 - fromLeft);
 }
 
 /**
@@ -103,9 +108,16 @@ export function bucketAt(g: Geometry, rightBucket: number, x: number): number {
  * when a resize halves `slotsPer` a first-slot anchor always re-lands in the earlier of the two
  * buckets that replace it, so the marker jumps one column left for no reason a reader can see. The
  * middle re-lands in whichever new bucket actually contains the moment.
+ *
+ * **Never past the present**, which the middle alone does not guarantee: the rightmost bucket is
+ * still filling, so at `slotsPer = 2` its middle is `now + 1` half the time — a slot Rust answers
+ * `outside` for, because it is *ahead* of the ring rather than aged out of it. The readout would
+ * then say *not kept* about the newest column on the picture. The clamp stays inside the touched
+ * bucket by construction (`rightBucket · slotsPer ≤ now`), so it costs the anchor nothing.
  */
-export function slotAt(g: Geometry, rightBucket: number, x: number): number {
-  return bucketAt(g, rightBucket, x) * g.slotsPer + Math.floor(g.slotsPer / 2);
+export function slotAt(g: Geometry, nowSlot: number, x: number): number {
+  const bucket = bucketAt(g, nowSlot, x);
+  return Math.min(nowSlot, bucket * g.slotsPer + Math.floor(g.slotsPer / 2));
 }
 
 /**
@@ -117,19 +129,11 @@ export function slotAt(g: Geometry, rightBucket: number, x: number): number {
  * slot briefly ahead of the picture's own right edge between a reconfigure and the tick that
  * follows it.
  */
-export function columnX(
-  g: Geometry,
-  rightBucket: number,
-  slot: number,
-): number | null {
-  const fromLeft = g.buckets - 1 - (rightBucket - Math.floor(slot / g.slotsPer));
+export function columnX(g: Geometry, nowSlot: number, slot: number): number | null {
+  const fromLeft =
+    g.buckets - 1 - (rightBucket(g, nowSlot) - Math.floor(slot / g.slotsPer));
   if (fromLeft < 0 || fromLeft >= g.buckets) return null;
   return g.plotX + (g.plotW * (fromLeft + 0.5)) / g.buckets;
-}
-
-/** The bucket at the right edge — the same derivation `Spectrogram.vue`'s `advance` makes. */
-export function rightBucketOf(g: Geometry, nowSlot: number): number {
-  return Math.floor(nowSlot / g.slotsPer);
 }
 
 /** Is the point inside the plot? The gutters are not the picture, and a press there places nothing. */
