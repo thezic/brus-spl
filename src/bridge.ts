@@ -90,7 +90,7 @@ export interface Column {
  * Three states rather than `number[] | null`, because Rust answers `None` both for a slot that
  * aged out of the 1200-slot ring and for a slot that was a gap, and *no data kept* and *silence*
  * are different claims: §6.9's refusal to publish a fake quiet applies to a readout exactly as it
- * applies to the hero number. A marker on `evicted` has lost the data it named; one on `gap` is
+ * applies to the hero number. A marker on `outside` has lost the data it named; one on `gap` is
  * still pointing at a real, empty moment.
  *
  * Unlike `Column.bands`, these are **already calibrated and rounded to 0.1 dB** — the two disagree
@@ -107,7 +107,7 @@ export type SlotLevels =
    * 120 s and at a 10 s span a slot 30 s old is off the picture and still answers `levels`.
    * A marker leaving the plot is geometry on this side; this is the ring running out.
    */
-  | { state: "evicted" };
+  | { state: "outside" };
 
 /** Everything the screen paints, once per 100 ms. */
 export interface Tick {
@@ -188,7 +188,7 @@ export function getSpectrogram(): Promise<Column[]> {
  *
  * The ring is 120 s at every span, so at every span but 120 s this happily answers for slots the
  * picture stopped showing a while ago. **A marker vanishing at the left edge is this side's own
- * geometry**, not an `evicted` coming back — the two coincide only at a 120 s span.
+ * geometry**, not an `outside` coming back — the two coincide only at a 120 s span.
  */
 export function getSlotLevels(slot: number): Promise<SlotLevels> {
   return invoke<SlotLevels>("get_slot_levels", { slot });

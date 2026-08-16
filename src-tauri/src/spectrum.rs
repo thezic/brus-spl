@@ -1013,7 +1013,7 @@ mod tests {
 
     /// [`Spectrum::retained_slots`] is the bound `columns_in` clamps to, so the two cannot drift
     /// apart — which matters because spec §7.5's readout uses it to tell an aged-out slot from a
-    /// gap, and a range one slot wider than the ring would call an evicted slot silent.
+    /// gap, and a range one slot wider than the ring would call a slot outside the ring silent.
     #[test]
     fn the_retained_range_is_exactly_what_the_ring_can_answer_for() {
         let now = 5_000;

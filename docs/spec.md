@@ -975,8 +975,14 @@ commands  — all settings commands return the new Settings
 SlotLevels — a tagged union, because two different nothings must not read alike
   { state: "levels", bands: [...32] }  // calibrated, 0.1 dB, low row first
   { state: "gap" }                     // in the ring and empty: §7.3's hole
-  { state: "evicted" }                 // outside the ring: nothing is being claimed
+  { state: "outside" }                 // outside the ring: nothing is being claimed
 ```
+
+**`outside`, not `evicted`** (`#12`). §7.5's word is *evicted* and that is the only case a marker
+can reach, but the state also answers for a slot **ahead** of the present, which was never evicted
+from anything. To the caller they are one claim — *there is no data here and asking again will not
+help*. Note it is **not** the cue that a marker has scrolled off: §7.5's left edge is the display
+span, 10–120 s, while the ring is 120 s at every span, so the two coincide only at 120 s.
 
 Field types: `weighting: "C" | "A" | "Z"`, `time_weighting: "F" | "S"`,
 `window_s: 10 | 30 | 60 | 120`, `unit: "dB" | "dBFS"`, all dB values `f64` rounded to 0.1 dB,
