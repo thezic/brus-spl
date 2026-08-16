@@ -980,7 +980,8 @@ SlotLevels — a tagged union, because two different nothings must not read alik
 
 Field types: `weighting: "C" | "A" | "Z"`, `time_weighting: "F" | "S"`,
 `window_s: 10 | 30 | 60 | 120`, `unit: "dB" | "dBFS"`, all dB values `f64` rounded to 0.1 dB,
-`slot: u64`, `bands: [f32; 32]`.
+`slot: u64`, `Column.bands: [f32; 32]` raw, `SlotLevels.bands: [f64; 32]` calibrated. **The two
+`bands` are the one place the same field name carries two types**, and the next paragraph is why.
 
 **`get_slot_levels` is the one place a band value is calibrated** (`#12`). A column's bands stay
 raw because §7.1's colour window shifts *by* the offset and no pixel moves; this is a number a
@@ -994,8 +995,11 @@ clear-calibration command** (uncalibrated is the initial state; a wrong offset i
 
 ### 9.2 Properties worth stating rather than leaving to be inferred
 
-- **Every dB value crossing the bridge is already calibrated** (§8.2). Do not move the offset to
-  the frontend for convenience.
+- **Every dB value crossing the bridge is already calibrated** (§8.2), **with one exception, and
+  it is arithmetic rather than an oversight**: a column's bands are raw, because §7.1's colour
+  window shifts *by* the offset and the values shift with it, so no pixel moves. §7.5's
+  `get_slot_levels` is a number a reader looks at rather than a colour, so it is calibrated like
+  everything else (§9.1). Do not move the offset to the frontend for convenience in either case.
 - **The frontend holds no authoritative state.** All four settings *and* the unit ride in
   **every** tick, so the tick is a complete snapshot of everything the UI paints. This extends
   §8.2's footgun-denial from **values to labels**: the unit travels with the numbers, so a value

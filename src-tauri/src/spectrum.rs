@@ -310,7 +310,7 @@ impl Spectrum {
     ///
     /// The upper end is `now_slot` for the same reason the pull's right edge is: a slot ahead of
     /// the present is not something the app is withholding.
-    pub fn retained(now_slot: u64) -> RangeInclusive<u64> {
+    pub fn retained_slots(now_slot: u64) -> RangeInclusive<u64> {
         now_slot.saturating_sub(RING_SLOTS - 1)..=now_slot
     }
 
@@ -320,7 +320,7 @@ impl Spectrum {
     /// entry *is* the hole. Explicit `null` entries were rejected as duplicating what the
     /// indices already say, at 270 wasted entries for a 27 s hole.
     pub fn columns_in(&self, first: u64, last: u64) -> Vec<(u64, [f32; BANDS])> {
-        let first = first.max(*Spectrum::retained(last).start());
+        let first = first.max(*Spectrum::retained_slots(last).start());
         (first..=last)
             .filter_map(|slot| self.column(slot).map(|bands| (slot, bands)))
             .collect()
@@ -1011,26 +1011,26 @@ mod tests {
         assert!(rig.s.columns_in(0, later).len() <= RING_SLOTS as usize);
     }
 
-    /// [`Spectrum::retained`] is the bound `columns_in` clamps to, so the two cannot drift apart —
-    /// which matters because spec §7.5's readout uses it to tell an aged-out slot from a gap, and
-    /// a range one slot wider than the ring would call an evicted slot silent.
+    /// [`Spectrum::retained_slots`] is the bound `columns_in` clamps to, so the two cannot drift
+    /// apart — which matters because spec §7.5's readout uses it to tell an aged-out slot from a
+    /// gap, and a range one slot wider than the ring would call an evicted slot silent.
     #[test]
     fn the_retained_range_is_exactly_what_the_ring_can_answer_for() {
         let now = 5_000;
-        let retained = Spectrum::retained(now);
+        let retained = Spectrum::retained_slots(now);
         assert_eq!(retained, 3_801..=5_000);
         assert_eq!(retained.count() as u64, RING_SLOTS);
         assert!(
-            !Spectrum::retained(now).contains(&3_800),
+            !Spectrum::retained_slots(now).contains(&3_800),
             "one too far back"
         );
         assert!(
-            !Spectrum::retained(now).contains(&(now + 1)),
+            !Spectrum::retained_slots(now).contains(&(now + 1)),
             "a slot ahead of the present is not data being withheld"
         );
 
         // Early on, the ring holds everything there has ever been — including slot 0.
-        assert_eq!(Spectrum::retained(3), 0..=3);
+        assert_eq!(Spectrum::retained_slots(3), 0..=3);
     }
 
     #[test]

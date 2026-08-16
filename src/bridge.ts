@@ -101,7 +101,12 @@ export type SlotLevels =
   | { state: "levels"; bands: number[] }
   /** In the ring, and empty: spec §7.3's hole, drawn as nothing in the picture too. */
   | { state: "gap" }
-  /** Outside the ring — aged out, or ahead of the present. §7.5's marker vanishes on this. */
+  /**
+   * Outside the 120 s ring — aged out, or ahead of the present. **Not the marker's vanish
+   * trigger**: §7.5's left edge is the *display span*, 10 to 120 s, so the two coincide only at
+   * 120 s and at a 10 s span a slot 30 s old is off the picture and still answers `levels`.
+   * A marker leaving the plot is geometry on this side; this is the ring running out.
+   */
   | { state: "evicted" };
 
 /** Everything the screen paints, once per 100 ms. */
@@ -181,7 +186,9 @@ export function getSpectrogram(): Promise<Column[]> {
  * two differ; the marker pins to the marked bucket's middle slot (§7.5), and that choice lives with
  * the caller because the pixel budget is the frontend's fact, not Rust's.
  *
- * The ring is 120 s at every span, so this can answer for slots the picture is no longer showing.
+ * The ring is 120 s at every span, so at every span but 120 s this happily answers for slots the
+ * picture stopped showing a while ago. **A marker vanishing at the left edge is this side's own
+ * geometry**, not an `evicted` coming back — the two coincide only at a 120 s span.
  */
 export function getSlotLevels(slot: number): Promise<SlotLevels> {
   return invoke<SlotLevels>("get_slot_levels", { slot });

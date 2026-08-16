@@ -123,7 +123,7 @@ impl From<(u64, [f32; BANDS])> for Column {
 ///
 /// The wire shape is a tagged union — `{"state":"levels","bands":[…32]}`, `{"state":"gap"}`,
 /// `{"state":"evicted"}` — so the frontend reads one discriminant and cannot mistake an empty
-/// array for a quiet room. [`Spectrum::retained`] is what separates the last two: inside the
+/// array for a quiet room. [`Spectrum::retained_slots`] is what separates the last two: inside the
 /// ring's bounds a missing column *is* a hole; outside them the app is not claiming anything.
 ///
 /// **The values are calibrated and rounded to 0.1 dB, unlike [`Column::bands`]** — the two
@@ -145,7 +145,13 @@ pub enum SlotLevels {
     Gap,
     /// The ring keeps nothing for this slot — it has aged out of the 1200-slot history, or (a
     /// caller error, since a marker can only be placed on drawn data) it is ahead of the present.
-    /// Spec §7.5's marker vanishes on this answer, because the data it named is genuinely gone.
+    /// Both are the same claim: *there is no data here and asking again will not help*.
+    ///
+    /// **Not spec §7.5's "vanishes at the left edge".** That edge is the display span, 10 to
+    /// 120 s, while this ring is 120 s at every span — so the two coincide only at 120 s, and at
+    /// a 10 s span a marker 30 s old is off the picture and still answers [`SlotLevels::Levels`].
+    /// A marker leaving the plot is geometry the frontend already owns; this answer is the ring
+    /// running out, which is the *other* reason a marker stops having a level.
     Evicted,
 }
 
@@ -634,8 +640,9 @@ impl AppState {
     /// **Per slot rather than per bucket**, which is the whole reason it comes from here: the
     /// frontend owns the pixel budget, so a bucket is a frontend fact, while a slot's identity is
     /// the one thing both sides already agree on (`#10`). It answers for any slot the ring still
-    /// holds, which is 120 s regardless of the display span, so it can also answer for data the
-    /// picture is no longer showing.
+    /// holds, which is **120 s regardless of the display span** — so at every span but 120 s it
+    /// answers for data the picture stopped showing a while ago, and
+    /// [`SlotLevels::Evicted`] is therefore not the frontend's cue that a marker has scrolled off.
     ///
     /// **The right edge is the ring's, not the clock's**, exactly as in [`AppState::spectrogram`]:
     /// [`Metrics::now_slot`] is advanced by the tick, so a tap landing between ticks is answered
@@ -651,7 +658,7 @@ impl AppState {
         let spectrum = self.spectrum.lock().unwrap();
         let settings = self.settings.lock().unwrap().settings();
 
-        if !Spectrum::retained(now_slot).contains(&slot) {
+        if !Spectrum::retained_slots(now_slot).contains(&slot) {
             return SlotLevels::Evicted;
         }
         match spectrum.column(slot) {
@@ -1711,7 +1718,7 @@ mod tests {
     /// marker whose data aged out must vanish rather than claim the room was quiet.
     ///
     /// The boundary is asserted on adjacent slots, both of them holes, so the *only* thing
-    /// deciding the answer is [`Spectrum::retained`].
+    /// deciding the answer is [`Spectrum::retained_slots`].
     #[test]
     fn an_evicted_slot_and_a_gap_are_not_the_same_answer() {
         let mut rig = Rig::new();
