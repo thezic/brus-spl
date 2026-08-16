@@ -117,11 +117,19 @@ const rect = computed(() => ({
       <InputLine :input="meter.input" />
     </div>
 
+    <!-- **`@pointerdown.stop` on both**, spec §7.5: the marker's overlay covers the whole picture
+         box and takes every pointer event over it, so a corner button has to sit above it *and*
+         keep its own press to itself — otherwise the readout swallows the button. The two are
+         siblings rather than nested today, so the press would not reach the overlay by bubbling
+         either; the guard is on the button because that is where the requirement is true whatever
+         the eventual nesting, and a `⋯` that silently placed a marker behind the settings sheet is
+         a bug nobody would look for here. -->
     <button
       v-if="canClose"
       type="button"
       class="plot-corner close"
       aria-label="Close the expanded picture"
+      @pointerdown.stop
       @click="emit('close')"
     >
       ✕
@@ -134,6 +142,7 @@ const rect = computed(() => ({
       type="button"
       class="plot-corner more"
       aria-label="Settings, calibration and reset"
+      @pointerdown.stop
       @click="emit('more')"
     >
       ⋯

@@ -25,11 +25,13 @@ import { computed, onMounted, onUnmounted, ref, shallowRef, watch } from "vue";
 import ExpandedChrome from "./components/ExpandedChrome.vue";
 import Hero from "./components/Hero.vue";
 import InputLine from "./components/InputLine.vue";
+import PictureMarker from "./components/PictureMarker.vue";
 import Secondary from "./components/Secondary.vue";
 import SettingsSheet from "./components/SettingsSheet.vue";
 import Spectrogram from "./components/Spectrogram.vue";
 import { onTick, type Meter, type Settings, type Tick } from "./bridge";
 import { heroLabel } from "./display";
+import type { Marker } from "./marker";
 import type { Geometry } from "./spectrogram";
 
 const meter = ref<Meter | null>(null);
@@ -126,6 +128,20 @@ watch(pictureHeight, () => {
 });
 
 /**
+ * The one marker (spec §7.5, #15) — **held here rather than in the overlay that draws it.**
+ *
+ * `PictureMarker` is mounted only while the picture is expanded, so state kept inside it would be
+ * discarded by the close button and by every rotation back to portrait. §7.5 requires the marker to
+ * survive expanding and reopening, and the reason it can is that it names a `(slot, band)`: the
+ * inline and expanded pictures group slots into columns differently, and a slot's identity is
+ * indifferent to that.
+ *
+ * It is not authoritative state in §9.2's sense — nothing is computed from it and its level came
+ * from Rust already calibrated. It is where the finger was.
+ */
+const marker = ref<Marker | null>(null);
+
+/**
  * The expand button's **offsets** from the plot's top-right corner. Its size and its plate are
  * `.plot-corner`'s, shared with the two the expanded view draws.
  *
@@ -218,6 +234,24 @@ onUnmounted(() => {
       >
         ⤢
       </button>
+
+      <!-- **The marker, expanded only** (spec §7.5) — the inline picture has no touch target for
+           it, which is the whole reason §7.4's expanded view exists.
+
+           **Before the chrome, deliberately.** The overlay covers the whole picture box and takes
+           every pointer event over it, so close and `⋯` have to sit above it: they are later
+           siblings, which is what puts them there, and they stop their own presses as well.
+
+           Gated on the tick rather than only on the rect — unlike the chrome, which must be
+           reachable before the first one. There is nothing to mark until a picture exists, and the
+           unit a level is labelled with rides in the tick. -->
+      <PictureMarker
+        v-if="expanded && plot && tick && settings"
+        v-model="marker"
+        :geometry="plot"
+        :now-slot="tick.now_slot"
+        :unit="settings.unit"
+      />
 
       <!-- Gated on the rect alone, **not** on the meter: §7.4 needs `⋯` reachable the moment the
            view is on screen, and an app launched in landscape is expanded from its first frame.
